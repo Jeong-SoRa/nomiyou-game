@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>노미요와 파닥이들 - 캐릭터 테스트</title>
+    <style>
+      html, body { margin: 0; height: 100%; overflow: hidden; background: #0a0c14; }
+      canvas { display: block; }
+      #hud {
+        position: fixed; left: 16px; top: 16px; padding: 12px 16px;
+        color: #e8e6df; font: 13px/1.6 system-ui, -apple-system, "Malgun Gothic", sans-serif;
+        background: rgba(10, 12, 20, 0.72); border: 1px solid rgba(255,255,255,0.12);
+        border-radius: 10px; backdrop-filter: blur(6px); user-select: none;
+      }
+      #hud b { color: #ffb070; }
+      #hud .row { display: flex; gap: 10px; }
+      #hud kbd {
+        display: inline-block; min-width: 18px; text-align: center; padding: 0 5px;
+        border: 1px solid rgba(255,255,255,0.3); border-bottom-width: 2px; border-radius: 4px;
+        font: 12px monospace; color: #fff; background: rgba(255,255,255,0.06);
+      }
+      #mode { position: fixed; right: 16px; top: 16px; padding: 8px 14px; border-radius: 999px;
+        color: #ffb070; font: 600 13px system-ui, sans-serif; letter-spacing: 0.04em;
+        background: rgba(10, 12, 20, 0.72); border: 1px solid rgba(255,176,112,0.4); }
+      #mode.horror { color: #ff5c5c; border-color: rgba(255,92,92,0.5); }
+      #fade { position: fixed; inset: 0; background: #000; opacity: 0; pointer-events: none; transition: opacity 0.35s ease; }
+      #fade.on { opacity: 1; }
+    </style>
+  </head>
+  <body>
+    <div id="hud">
+      <div><b>노미요</b>(여우) 이동 <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / 방향키 · 달리기 <kbd>Shift</kbd></div>
+      <div>의자 앉기/일어나기 <kbd>Space</kbd> · 문으로 걸어가면 밖으로 나감</div>
+      <div>노미요 표정 <kbd>F</kbd> · <b>파닥이</b>(병아리) 표정 <kbd>E</kbd> · 공포 모드 <kbd>H</kbd></div>
+      <div>카메라: 마우스 드래그 회전 · 휠 줌</div>
+    </div>
+    <div id="mode">HOME</div>
+    <div id="fade"></div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
