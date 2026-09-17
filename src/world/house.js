@@ -112,6 +112,7 @@ export function createHouse() {
   monitor.add(bezel);
   const screenMatOff = new THREE.MeshBasicMaterial({ map: screenTexture('off') });
   const screenMatOn = new THREE.MeshBasicMaterial({ map: screenTexture('noise') });
+  const screenMatStream = new THREE.MeshBasicMaterial({ map: screenTexture('stream') });
   const screen = new THREE.Mesh(new THREE.PlaneGeometry(4.35, 2.7), screenMatOff);
   screen.position.set(0, 2.15, 0.115);
   monitor.add(screen);
@@ -405,12 +406,13 @@ export function createHouse() {
   }
 
   let noiseTimer = 0;
-  function update(dt, t, horrorBlend) {
+  let streamTimer = 0;
+  function update(dt, t, horrorBlend, streaming = false) {
     hemi.intensity = THREE.MathUtils.lerp(0.9, 0.08, horrorBlend);
     sun.intensity = THREE.MathUtils.lerp(1.7, 0.1, horrorBlend);
     lamp.intensity = THREE.MathUtils.lerp(6, 0.6, horrorBlend);
     const on = horrorBlend > 0.4;
-    screen.material = on ? screenMatOn : screenMatOff;
+    screen.material = on ? screenMatOn : streaming ? screenMatStream : screenMatOff;
     if (on) {
       noiseTimer -= dt;
       if (noiseTimer <= 0) {
@@ -420,6 +422,14 @@ export function createHouse() {
       }
       const flick = Math.sin(t * 23) * Math.sin(t * 7.3) > 0.6 ? 0.3 : 1;
       screenLight.intensity = 12 * horrorBlend * flick;
+    } else if (streaming) {
+      streamTimer -= dt;
+      if (streamTimer <= 0) {
+        streamTimer = 0.5;
+        screenMatStream.map.dispose();
+        screenMatStream.map = screenTexture('stream');
+      }
+      screenLight.intensity = 3;
     } else {
       screenLight.intensity = 0;
     }
@@ -452,6 +462,11 @@ export function createHouse() {
     seat: {
       position: new THREE.Vector3(CHAIR.x, CHAIR.seatY, CHAIR.z + 0.05),
       heading: Math.PI, // 모니터(-z)를 향함
+      approach: new THREE.Vector3(CHAIR.x, 0, CHAIR.z + 1.9),
+      radius: 2.6,
+    },
+    // 컴퓨터: 근처에서 C 를 누르면 방송 시작/종료 (의자 근접 존을 그대로 사용)
+    computer: {
       approach: new THREE.Vector3(CHAIR.x, 0, CHAIR.z + 1.9),
       radius: 2.6,
     },

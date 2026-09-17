@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { toon, mesh, sphere, capsule, eyeArc, outline, zigzagTexture, Blinker } from '../helpers.js';
+import { speechBubbleTexture } from '../world/textures.js';
 
 /**
  * 노미요 (Nomiyo) - 만화 속 치비 여우.
@@ -218,6 +219,25 @@ export function createFox() {
     ears.push(ear);
   }
 
+  // 머리 위 말풍선 (구독 리액션 등에 사용)
+  const speechSprite = new THREE.Sprite(
+    new THREE.SpriteMaterial({ transparent: true, opacity: 0, depthTest: false })
+  );
+  speechSprite.scale.set(1.6, 0.8, 1);
+  speechSprite.position.set(0, HEAD_Y + 1.6, 0);
+  speechSprite.visible = false;
+  root.add(speechSprite);
+  let speechTimer = 0;
+  let speechDuration = 1;
+
+  function say(text, duration = 1.8) {
+    if (speechSprite.material.map) speechSprite.material.map.dispose();
+    speechSprite.material.map = speechBubbleTexture(text);
+    speechSprite.visible = true;
+    speechTimer = duration;
+    speechDuration = duration;
+  }
+
   // ---------- 애니메이션 ----------
   const blinker = new Blinker(dotEyes);
   let phase = 0;
@@ -276,7 +296,15 @@ export function createFox() {
     ears[1].rotation.z = -0.62 - twitch * 0.5;
 
     if (expression === 'dot') blinker.update(dt);
+
+    if (speechTimer > 0) {
+      speechTimer -= dt;
+      const fadeOut = Math.min(speechDuration, 0.3);
+      speechSprite.material.opacity =
+        speechTimer > fadeOut ? Math.min(1, (speechDuration - speechTimer) / 0.2) : speechTimer / fadeOut;
+      if (speechTimer <= 0) speechSprite.visible = false;
+    }
   }
 
-  return { group: root, update, setExpression, getExpression: () => expression };
+  return { group: root, update, setExpression, getExpression: () => expression, say };
 }

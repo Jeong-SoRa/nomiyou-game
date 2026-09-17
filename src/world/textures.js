@@ -211,7 +211,7 @@ export function chatSignTexture() {
   return finish(c);
 }
 
-/** 꺼진 모니터 화면 (미세한 반사) / 공포 모드 노이즈 화면 */
+/** 꺼진 모니터 화면 (미세한 반사) / 공포 모드 노이즈 화면 / 방송 중 화면 */
 export function screenTexture(mode = 'off') {
   const [c, ctx] = makeCanvas(512, 320);
   if (mode === 'off') {
@@ -220,6 +220,16 @@ export function screenTexture(mode = 'off') {
     g.addColorStop(1, '#050507');
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, 512, 320);
+  } else if (mode === 'stream') {
+    const g = ctx.createLinearGradient(0, 0, 512, 320);
+    g.addColorStop(0, '#2a2f45');
+    g.addColorStop(1, '#171b2b');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 512, 320);
+    ctx.fillStyle = 'rgba(255,176,112,0.55)';
+    for (let i = 0; i < 14; i++) {
+      ctx.fillRect(Math.random() * 512, Math.random() * 320, 2, 2);
+    }
   } else {
     const img = ctx.createImageData(512, 320);
     for (let i = 0; i < img.data.length; i += 4) {
@@ -231,5 +241,31 @@ export function screenTexture(mode = 'off') {
     }
     ctx.putImageData(img, 0, 0);
   }
+  return finish(c);
+}
+
+/** 머리 위 말풍선 텍스트 */
+export function speechBubbleTexture(text) {
+  const [c, ctx] = makeCanvas(256, 128);
+  ctx.fillStyle = '#fffdf7';
+  ctx.strokeStyle = '#2a211d';
+  ctx.lineWidth = 6;
+  ctx.beginPath();
+  ctx.roundRect(8, 8, 240, 88, 30);
+  ctx.fill();
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(60, 96);
+  ctx.lineTo(48, 120);
+  ctx.lineTo(84, 98);
+  ctx.closePath();
+  ctx.fillStyle = '#fffdf7';
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = '#2a211d';
+  ctx.font = 'bold 32px "Malgun Gothic", sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, 128, 50);
   return finish(c);
 }

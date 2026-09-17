@@ -152,5 +152,6 @@ export function createForest() {
     door: { position: new THREE.Vector3(CABIN.x, 0, doorZ + 0.9), radius: 1.5, target: 'house' },
     doorSpawn: { position: new THREE.Vector3(0, 0, doorZ + 3.4), heading: Math.PI },
     seat: null,
+    computer: null,
   };
 }
