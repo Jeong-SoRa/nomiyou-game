@@ -10,7 +10,7 @@ import { toon, mesh } from '../helpers.js';
  */
 const BLACK = 0x040404;
 const BLACK_DEEP = 0x000000;
-const TOOTH = 0xb8ad9a;
+const TOOTH = 0xd8d0bf; // 날카로움이 도드라지게 더 밝은 뼈색
 const EYE_RED = 0xff0000;
 const VOID = 0x000000;
 
@@ -47,59 +47,67 @@ export function createMonster({ scale = 1 } = {}) {
     body.add(spike);
   }
 
-  // ---------- 머리: 각진 저폴리 두개골이 목 위에서 앞으로 길게 뻗어 나온다. 부리 없음 ----------
+  // ---------- 머리: 몸통보다 훨씬 위, 긴 목 끝에 달려 있어 노미요를 내려다보는 구도가 된다. 부리 없음 ----------
   const headGroup = new THREE.Group();
-  headGroup.position.set(0.03, R * 0.6, 0.08);
-  headGroup.rotation.set(0.62, 0.04, 0.05); // 앞으로 내밀고 살짝 비틀린 목
+  headGroup.position.set(0.05, 1.78, 0.03); // 몸통 꼭대기보다도 높게 — 위에서 내려다보는 자세
+  headGroup.rotation.set(0.72, 0.04, 0.05); // 고개를 크게 숙여 아래(노미요)를 노려봄
   body.add(headGroup);
   const HEAD_TILT = headGroup.rotation.x;
 
+  // 머리 크기를 키움 (더 위협적으로 도드라지도록)
   const skull = mesh(new THREE.OctahedronGeometry(0.5, 0), mBlack); // 매끈한 구 대신 각진 다면체
-  skull.scale.set(0.72, 0.62, 1.55);
-  skull.position.z = 0.3;
+  skull.scale.set(0.95, 0.85, 1.95);
+  skull.position.z = 0.36;
   headGroup.add(skull);
-  const neck = mesh(new THREE.CylinderGeometry(0.3, 0.42, 0.6, 6), mBlack);
-  neck.position.set(0, -0.05, -0.32);
+  // 목: 몸통 꼭대기까지 이어지는 긴 목 (머리를 높이 든 자세를 만드는 핵심 요소)
+  const neck = mesh(new THREE.CylinderGeometry(0.34, 0.52, 1.7, 6), mBlack);
+  neck.position.set(-0.02, -0.85, -0.28);
   neck.rotation.x = 0.5;
   headGroup.add(neck);
 
-  // 입: 돌출된 부리 없이, 두개골 앞쪽 아래에 뚫린 새까만 틈만 있고 그 가장자리에서 이빨이 들쭉날쭉 자란다
-  const maw = mesh(new THREE.SphereGeometry(0.3, 10, 8), mVoid);
-  maw.scale.set(1.2, 0.7, 0.6);
-  maw.position.set(0.02, -0.15, 0.78);
+  // 입: 돌출된 부리 없이, 활짝 벌어진 새까만 틈(세로로 긴 구멍 — 웃는 곡선이 아니라 비명 지르듯 벌어진 모양)
+  // 그 가장자리를 이빨이 빽빽하고 들쭉날쭉하게 두르고 있다
+  const maw = mesh(new THREE.SphereGeometry(0.34, 12, 10), mVoid);
+  maw.scale.set(1.05, 1.35, 0.66);
+  maw.position.set(0.02, -0.22, 1.02);
   headGroup.add(maw);
 
   const teeth = [];
   const toothSpecs = [
-    // [x, z, length, fromTop] — 길이가 제각각이고 살짝씩 어긋나 있어 뜯겨나간 듯한 인상
-    [-0.27, 0.56, 0.5, true],
-    [-0.14, 0.78, 0.78, true],
-    [0.0, 0.92, 0.6, true],
-    [0.15, 0.82, 0.9, true],
-    [0.28, 0.6, 0.52, true],
-    [-0.35, 0.38, 0.36, true],
-    [0.36, 0.36, 0.4, true],
-    [-0.22, 0.46, 0.54, false],
-    [-0.06, 0.72, 0.74, false],
-    [0.11, 0.84, 0.46, false],
-    [0.25, 0.56, 0.66, false],
-    [0.35, 0.32, 0.32, false],
+    // [x, z, length, fromTop] — 길이가 제각각이고 빽빽하게 겹쳐 있어 뜯겨나간 듯한 인상. 활짝 벌린 입을 빙 둘러싼다
+    [-0.42, 0.62, 0.62, true],
+    [-0.3, 0.86, 0.95, true],
+    [-0.16, 1.02, 0.72, true],
+    [0.0, 1.12, 1.05, true],
+    [0.16, 1.02, 0.78, true],
+    [0.3, 0.84, 0.98, true],
+    [0.43, 0.6, 0.58, true],
+    [-0.46, 0.42, 0.42, true],
+    [0.47, 0.4, 0.46, true],
+    [-0.34, 0.5, 0.66, false],
+    [-0.2, 0.78, 0.9, false],
+    [-0.05, 0.94, 0.56, false],
+    [0.08, 1.0, 0.98, false],
+    [0.22, 0.86, 0.52, false],
+    [0.36, 0.6, 0.8, false],
+    [0.44, 0.36, 0.36, false],
+    [-0.42, 0.34, 0.34, false],
   ];
   for (const [x, z, len, fromTop] of toothSpecs) {
-    const tooth = mesh(new THREE.ConeGeometry(0.055, len, 5), mTooth);
-    const yBase = fromTop ? -0.02 : -0.3;
-    tooth.position.set(x, yBase + (fromTop ? -len / 2 + 0.04 : len / 2 - 0.04), z);
+    const tooth = mesh(new THREE.ConeGeometry(0.06, len, 5), mTooth);
+    const yBase = fromTop ? 0.0 : -0.4;
+    tooth.position.set(x, yBase + (fromTop ? -len / 2 + 0.05 : len / 2 - 0.05), z);
     tooth.rotation.x = fromTop ? Math.PI : 0;
-    tooth.rotation.z = (Math.random() - 0.5) * 0.45;
-    tooth.rotation.x += (Math.random() - 0.5) * 0.25;
+    tooth.rotation.z = (Math.random() - 0.5) * 0.5;
+    tooth.rotation.x += (Math.random() - 0.5) * 0.3;
     headGroup.add(tooth);
     teeth.push(tooth);
   }
 
   // 눈: 좌우 크기·높이가 다르다 — 잘못 봉합된 듯한 비대칭. 눈썹도 하이라이트도 없이 붉게만 빛난다
   const eyeSpecs = [
-    { s: -1, x: 0.26, y: 0.18, z: 0.5, r: 0.095 },
-    { s: 1, x: 0.21, y: 0.08, z: 0.52, r: 0.065 },
+    { s: -1, x: 0.34, y: 0.26, z: 0.68, r: 0.12 },
+    { s: 1, x: 0.27, y: 0.13, z: 0.7, r: 0.08 },
   ];
   const eyes = [];
   for (const { s, x, y, z, r } of eyeSpecs) {
@@ -111,8 +119,8 @@ export function createMonster({ scale = 1 } = {}) {
     headGroup.add(eye);
     eyes.push(eye);
   }
-  const eyeLight = new THREE.PointLight(EYE_RED, 4, 6.5, 2);
-  eyeLight.position.set(0.1, 0.13, 0.9);
+  const eyeLight = new THREE.PointLight(EYE_RED, 4.5, 7.5, 2);
+  eyeLight.position.set(0.14, 0.18, 1.2);
   headGroup.add(eyeLight);
 
   // ---------- 팔: 좌우 길이가 다른, 뼈만 남은 듯 가늘고 긴 팔. 손끝은 길게 뻗은 발톱 여러 개 ----------
@@ -127,11 +135,12 @@ export function createMonster({ scale = 1 } = {}) {
     const limb = mesh(new THREE.CapsuleGeometry(0.075, len, 4, 8), mBlack);
     limb.position.y = -len / 2 - 0.075;
     arm.add(limb);
+    // 손끝 발톱: 더 가늘고 길게 뻗어 부채꼴로 펼쳐 날카로움을 강조
     const handY = -len - 0.15;
-    for (let i = -1.5; i <= 1.5; i++) {
-      const claw = mesh(new THREE.ConeGeometry(0.04, 0.34, 4), mTooth);
-      claw.rotation.x = Math.PI / 2 + i * 0.16;
-      claw.position.set(i * 0.075, handY, 0.15 + Math.abs(i) * 0.03);
+    for (let i = -2; i <= 2; i++) {
+      const claw = mesh(new THREE.ConeGeometry(0.028, 0.58, 4), mTooth);
+      claw.rotation.x = Math.PI / 2 + i * 0.17;
+      claw.position.set(i * 0.075, handY, 0.16 + Math.abs(i) * 0.035);
       arm.add(claw);
     }
     arm.rotation.z = s * (0.08 + Math.random() * 0.06);
@@ -147,10 +156,10 @@ export function createMonster({ scale = 1 } = {}) {
     foot.position.set(s * 0.27, 0.07, 0.26);
     root.add(foot);
     feet.push(foot);
-    for (let i = -1; i <= 1; i++) {
-      const claw = mesh(new THREE.ConeGeometry(0.045, 0.24, 4), mTooth);
+    for (let i = -1.5; i <= 1.5; i++) {
+      const claw = mesh(new THREE.ConeGeometry(0.032, 0.42, 4), mTooth);
       claw.rotation.x = Math.PI / 2;
-      claw.position.set(s * 0.27 + i * 0.1, 0.06, 0.56);
+      claw.position.set(s * 0.27 + i * 0.08, 0.06, 0.6);
       root.add(claw);
     }
   }
@@ -179,5 +188,5 @@ export function createMonster({ scale = 1 } = {}) {
     eyeLight.intensity = 3.2 + Math.sin(time * 6) * 0.7 + (twitch > 0 ? 3 : 0);
   }
 
-  return { group: root, update, eyes, height: (BODY_Y + R) * scale };
+  return { group: root, update, eyes, height: (BODY_Y + 2.1) * scale };
 }
