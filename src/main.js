@@ -19,7 +19,7 @@ import { createAudio } from './systems/audio.js';
 import { createSettings } from './ui/settings.js';
 
 // 디버그용 URL 파라미터: ?world=forest, ?viadoor=1, ?keys=KeyW,ShiftLeft, ?horror=1, ?sit=1, ?stream=1|now, ?day=N, ?done=stream,recruit,
-//   ?companion=1, ?talk=1, ?cam=x,y,z, ?at=x,z, ?yaw=&dist=&height=, ?steps=N, ?gkeys=ArrowLeft, ?pickaxe=1, ?smash=1|hits|chop|statue|warn|choice|rubble|monster, ?monster=1, ?mcam=side,up,front
+//   ?companion=1, ?talk=1, ?cam=x,y,z, ?at=x,z, ?yaw=&dist=&height=, ?steps=N, ?gkeys=ArrowLeft, ?pickaxe=1, ?smash=1|hits|chop|statue|warn|choice|rubble|monster, ?monster=1, ?mcam=side,up,front[,aim]
 const params = new URLSearchParams(location.search);
 
 // ---------- 렌더러 / 씬 / 카메라 ----------
@@ -53,7 +53,7 @@ const glitchEl = document.getElementById('glitch');
 const sysWarnEl = document.getElementById('sysWarn');
 
 // ---------- 캐릭터 ----------
-const fox = createFox();
+const fox = createFox({ phone: false }); // 이 게임에선 노미요가 폰을 들지 않는다 (캐릭터 설정은 유지, 플래그로만 숨김)
 scene.add(fox.group);
 const foxState = { heading: 0, velocity: new THREE.Vector3(), sitting: false };
 
@@ -1017,11 +1017,11 @@ if (params.has('monster')) {
   const rec = spawnMonster(pos, foxState.heading + Math.PI);
   // ?mcam=side,up,front : 괴물 기준(정면 방향 기준) 상대 위치에 카메라를 두고 괴물 얼굴을 바라봄 (모델 확인용)
   if (params.has('mcam')) {
-    const [side, up, front] = params.get('mcam').split(',').map(Number);
+    const [side, up, front, aim = 0.72] = params.get('mcam').split(',').map(Number); // aim: 바라볼 높이(키 대비 비율)
     const h = foxState.heading; // 괴물은 -h 방향(노미요 쪽)을 바라본다
     const fwd = new THREE.Vector3(-Math.sin(h), 0, -Math.cos(h));
     const right = new THREE.Vector3(Math.cos(h), 0, -Math.sin(h));
-    controls.target.copy(pos).y += rec.char.height * 0.72;
+    controls.target.copy(pos).y += rec.char.height * aim;
     camera.position.copy(pos).addScaledVector(right, side).addScaledVector(fwd, front).y += up;
     camLocked = true;
   }

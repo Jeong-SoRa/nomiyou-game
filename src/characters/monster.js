@@ -62,28 +62,35 @@ export function createMonster({ scale = 1 } = {}) {
   }
 
   // ---------- 검고 너덜너덜한 옷자락: 발 대신 이걸 끌며 땅 위에 떠 있다 ----------
+  // 넓게 퍼진 치마가 아니라 몸을 따라 좁게 흘러내리는 천. 밑단은 딱 잘리지 않고
+  // 길이가 제각각인 넝마 가닥으로 풀어져 바닥 쪽으로 사라진다 (몇 가닥은 땅에 끌린다)
   const robeGroup = new THREE.Group();
-  robeGroup.position.set(0, BODY_Y * 0.42, -0.03);
+  robeGroup.position.set(0, BODY_Y * 0.7, -0.03);
   root.add(robeGroup);
   const ROBE_H = BODY_Y * 0.78;
-  const robe = mesh(new THREE.ConeGeometry(1.35, ROBE_H, 7, 1, true), mBlack); // 각진 저폴리 원뿔 — 매끈한 천이 아니라 뻣뻣하고 뒤틀린 형상
+  const ROBE_R = 0.95;
+  const robe = mesh(new THREE.ConeGeometry(ROBE_R, ROBE_H, 10, 1, true), mBlack);
   robe.position.y = ROBE_H * 0.1;
   robeGroup.add(robe);
-  // 밑단이 고르지 않게 찢어진 조각들
   const tatters = [];
-  const TATTER_N = 11;
+  const TATTER_N = 18;
   for (let i = 0; i < TATTER_N; i++) {
-    const a = (i / TATTER_N) * Math.PI * 2 + Math.random() * 0.3;
-    const hang = 0.35 + Math.random() * 0.75;
-    const tatter = mesh(new THREE.ConeGeometry(0.16, hang, 3), mDeep);
-    const rx = Math.cos(a) * 1.2;
-    const rz = Math.sin(a) * 1.2;
-    tatter.position.set(rx, -ROBE_H * 0.42 - hang * 0.5, rz);
-    tatter.rotation.x = Math.PI; // 뾰족한 끝이 아래를 향하게
-    tatter.rotation.y = a;
-    tatter.rotation.z = (Math.random() - 0.5) * 0.3;
+    const a = (i / TATTER_N) * Math.PI * 2 + (Math.random() - 0.5) * 0.25;
+    const hang = 0.5 + Math.random() * 0.6; // 길이 제각각
+    const w = 0.08 + Math.random() * 0.09;
+    // 납작하고 길게 늘어진 천 조각 (뾰족한 끝이 아래)
+    const tatter = mesh(new THREE.ConeGeometry(w, hang, 4), mDeep);
+    tatter.scale.z = 0.3;
+    const rr = ROBE_R * (0.82 + Math.random() * 0.12); // 밑단 안쪽에서 시작해 옷자락과 겹친다
+    const rx = Math.cos(a) * rr;
+    const rz = Math.sin(a) * rr;
+    const top = -ROBE_H * 0.3 - Math.random() * 0.15;
+    tatter.position.set(rx, top - hang * 0.5, rz);
+    tatter.rotation.y = -a + Math.PI / 2; // 넓은 면이 바깥을 향하게
+    tatter.rotation.x = Math.PI;
+    tatter.rotation.z = (Math.random() - 0.5) * 0.25;
     robeGroup.add(tatter);
-    tatters.push({ mesh: tatter, seed: Math.random() * 10, baseX: rx, baseZ: rz });
+    tatters.push({ mesh: tatter, seed: Math.random() * 10, baseZ: tatter.rotation.z });
   }
 
   // ---------- 머리: 몸통 꼭대기 위, 앞으로 쭉 내민 목 끝에 달려 있다. 얼굴과 늘어진 턱 전체가 검은 몸 앞에 떠 보인다 ----------
@@ -280,8 +287,8 @@ export function createMonster({ scale = 1 } = {}) {
   // ---------- 팔: 좌우 길이가 다른, 뼈만 남은 듯 가늘고 긴 팔. 손끝은 길게 뻗은 발톱 여러 개 ----------
   const arms = [];
   const ARM_SPECS = [
-    { s: -1, len: 2.05 },
-    { s: 1, len: 1.55 },
+    { s: -1, len: 1.45 },
+    { s: 1, len: 1.1 },
   ];
   for (const { s, len } of ARM_SPECS) {
     const arm = new THREE.Group();
@@ -339,9 +346,8 @@ export function createMonster({ scale = 1 } = {}) {
     robeGroup.rotation.z = Math.sin(time * 0.45) * 0.05;
     robeGroup.rotation.x = Math.sin(time * 0.38 + 1.4) * 0.035;
     for (const tt of tatters) {
-      const sway = Math.sin(time * 1.6 + tt.seed) * 0.12;
-      tt.mesh.rotation.x = Math.PI + sway;
-      tt.mesh.rotation.z = Math.sin(time * 1.1 + tt.seed) * 0.15;
+      tt.mesh.rotation.x = Math.PI + Math.sin(time * 1.6 + tt.seed) * 0.1;
+      tt.mesh.rotation.z = tt.baseZ + Math.sin(time * 1.1 + tt.seed) * 0.12;
     }
 
     // 시든 대파 가닥: 머리 움직임에 늦게 따라오며 흐느적거리고, 경련 때 함께 파르르 떨린다
