@@ -318,6 +318,15 @@ const near = (spot) =>
   !!spot && Math.hypot(fox.group.position.x - spot.approach.x, fox.group.position.z - spot.approach.z) <= spot.radius;
 const nearProp = (p) =>
   !!p && p.group.visible && Math.hypot(fox.group.position.x - p.position.x, fox.group.position.z - p.position.z) <= p.radius;
+// 노미요가 실제로 그 방향을 보고 있는지 (좌우 60도 안). 큰 상자처럼 방향을 등지고도 상호작용하면 어색한 대상에 사용
+const FACE_CONE = Math.PI / 3;
+const facingTarget = (target) => {
+  const dx = target.x - fox.group.position.x;
+  const dz = target.z - fox.group.position.z;
+  if (Math.hypot(dx, dz) < 0.05) return true;
+  const diff = Math.atan2(Math.sin(Math.atan2(dx, dz) - foxState.heading), Math.cos(Math.atan2(dx, dz) - foxState.heading));
+  return Math.abs(diff) <= FACE_CONE;
+};
 const walking = () => !streaming && !transitioning && !foxState.sitting;
 const hasCompanion = () => chicks.some((c) => c.follow);
 
@@ -360,7 +369,7 @@ function currentAction() {
       if (h) return { label: '힌트 줍기', at: h.prompt, run: () => pickHint(h) };
     }
     if (nearProp(p.pickaxe) && plan.pending('pickaxe')) return { label: '곡괭이 집기', at: p.pickaxe.prompt, run: takePickaxe };
-    if (nearProp(p.crate) && !crateOpened) {
+    if (nearProp(p.crate) && !crateOpened && facingTarget(p.crate.group.position)) {
       if (plan.pending('escape')) return { label: `상자 부수기 ${crateHits}/${p.crate.HITS}`, at: p.crate.prompt, run: hitCrate };
       return { label: '상자 살펴보기', at: p.crate.prompt, run: inspectCrate };
     }
