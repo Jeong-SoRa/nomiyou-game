@@ -95,6 +95,28 @@ export function createFox({ phone: hasPhone = true } = {}) {
   pickaxe.visible = false;
   arms[0].add(pickaxe);
 
+  // 물뿌리개 (화분에 물 줄 때만 오른손에 쥠, 평소엔 숨김). canPivot 이 팔 회전을 상쇄해 몸체가 늘 똑바로 서 있고, 부을 때만 앞으로 기운다
+  const canPivot = new THREE.Group();
+  canPivot.position.set(0, -0.62, 0.1);
+  const can = new THREE.Group();
+  const mCan = toon(0x6fa8dc);
+  const mCanDark = toon(0x5a8fc0);
+  const canBody = mesh(new THREE.CylinderGeometry(0.16, 0.19, 0.32, 12), mCan);
+  outline(canBody, 0.02, LINE);
+  const spout = mesh(new THREE.CylinderGeometry(0.03, 0.045, 0.42, 8), mCan);
+  spout.rotation.x = 0.95; // 앞(+z)으로 뻗은 주둥이
+  spout.position.set(0, 0.1, 0.27);
+  const rose = mesh(new THREE.SphereGeometry(0.065, 10, 8), mCanDark);
+  rose.position.set(0, 0.24, 0.44);
+  const handle = mesh(new THREE.TorusGeometry(0.13, 0.025, 8, 16, Math.PI), mCanDark);
+  handle.rotation.y = Math.PI / 2;
+  handle.position.set(0, 0.16, -0.04);
+  can.add(canBody, spout, rose, handle);
+  can.position.y = -0.08;
+  canPivot.add(can);
+  canPivot.visible = false;
+  arms[1].add(canPivot);
+
   // 스마트폰 (오른손)
   const phone = new THREE.Group();
   const phoneBody = mesh(new THREE.BoxGeometry(0.24, 0.46, 0.04), toon(0x1c1e24));
@@ -271,6 +293,14 @@ export function createFox({ phone: hasPhone = true } = {}) {
     pickaxe.visible = show;
     if (!show) chopT = 0;
   }
+  // 물주기: water() 를 부르면 오른팔을 앞으로 들어 물뿌리개를 기울였다가 다시 내린다
+  let waterT = 0;
+  let waterDur = 1.6;
+  let waterBlend = 0;
+  function water(duration = 1.6) {
+    waterDur = duration;
+    waterT = duration;
+  }
   // 디버그 전용: 곡괭이질 포즈를 진행도(k, 0~1)에 고정해 스크린샷으로 확인할 수 있게 한다 (헤드리스 테스트에서 실시간 스윙은 타이밍상 포착하기 어려움)
   let frozenChopK = null;
   function previewChop(k) {
@@ -333,10 +363,19 @@ export function createFox({ phone: hasPhone = true } = {}) {
       arms[1].rotation.x = swing * 0.6;
       arms[1].rotation.z = 0.25;
     }
+    // 물주기: 오른팔을 앞으로 들어 올리고(waterBlend), 동작 중간에 물뿌리개를 앞으로 기울인다(pour)
+    if (waterT > 0) waterT = Math.max(0, waterT - dt);
+    waterBlend = THREE.MathUtils.damp(waterBlend, waterT > 0 ? 1 : 0, 9, dt);
+    const waterK = waterT > 0 ? 1 - waterT / waterDur : 1;
+    const pour = waterBlend * Math.sin(Math.min(1, waterK) * Math.PI);
+    arms[1].rotation.x = THREE.MathUtils.lerp(arms[1].rotation.x, -1.2, waterBlend);
+    arms[1].rotation.z = THREE.MathUtils.lerp(arms[1].rotation.z, -0.05, waterBlend);
+    canPivot.visible = waterBlend > 0.03;
+    canPivot.rotation.x = -arms[1].rotation.x + pour * 0.85;
 
     head.position.y = HEAD_Y + bounce * 0.8 + Math.sin(time * 2.2) * 0.02;
     head.rotation.z = Math.sin(phase * 0.5) * 0.06 * moveBlend;
-    head.rotation.x = hasPhone ? THREE.MathUtils.lerp(0.12, 0.05, moveBlend) : 0.05; // 폰이 있으면 내려다보는 느낌
+    head.rotation.x = (hasPhone ? THREE.MathUtils.lerp(0.12, 0.05, moveBlend) : 0.05) + waterBlend * 0.22; // 폰이 있거나 물을 줄 땐 내려다보는 느낌
 
     // 꼬리: 좌우 흔들기 + 끝으로 갈수록 크게 출렁이는 웨이브
     const wag = Math.sin(time * 3 + phase * 0.8);
@@ -355,5 +394,5 @@ export function createFox({ phone: hasPhone = true } = {}) {
     speech.update(dt);
   }
 
-  return { group: root, update, setExpression, getExpression: () => expression, say, chop, setTool, previewChop };
+  return { group: root, update, setExpression, getExpression: () => expression, say, chop, setTool, previewChop, water };
 }

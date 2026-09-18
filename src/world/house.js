@@ -516,9 +516,66 @@ export function createHouse() {
       g.add(stem);
     }
     group.add(g);
+    return g;
   };
-  plant(SHELF.x, 0, FRONT_Z - 1.4, 1.6);
+  const bigPlant = plant(SHELF.x, 0, FRONT_Z - 1.4, 1.6);
   plant(SHELF.x, SHELF.y + 0.07, SHELF.z, 0.9);
+
+  // ----- 큰 화분 물주기: 물뿌리개 주둥이에서 잎 위로 떨어지는 물방울 + 물을 머금은 잎이 살짝 출렁 -----
+  const PLANT_POS = new THREE.Vector3(SHELF.x, 0, FRONT_Z - 1.4);
+  const dropGeo = new THREE.SphereGeometry(0.055, 6, 5);
+  const mDrop = new THREE.MeshBasicMaterial({ color: 0x9fdcff, transparent: true, opacity: 0.9 });
+  const drops = Array.from({ length: 36 }, () => {
+    const m = new THREE.Mesh(dropGeo, mDrop);
+    m.visible = false;
+    group.add(m);
+    return { mesh: m, v: new THREE.Vector3(), life: 0 };
+  });
+  let pourT = 0;
+  let pourAcc = 0;
+  let perk = 0;
+  let worldT = 0;
+  const pourFrom = new THREE.Vector3();
+  const dropTarget = new THREE.Vector3();
+  /** from: 물뿌리개 주둥이 위치(월드), duration: 붓는 시간 */
+  function waterPlant(from, duration = 1.6) {
+    pourFrom.copy(from);
+    pourT = duration;
+    pourAcc = 0;
+  }
+  function updateWater(dt) {
+    if (pourT > 0) {
+      pourT -= dt;
+      const k = 1 - pourT / 1.6;
+      if (k > 0.12 && k < 0.85) pourAcc += dt * 30; // 기울이는 중간 구간에만 물이 나온다
+      while (pourAcc >= 1) {
+        pourAcc -= 1;
+        const d = drops.find((x) => x.life <= 0);
+        if (!d) break;
+        d.life = 1.1;
+        d.mesh.visible = true;
+        d.mesh.position.copy(pourFrom).add(new THREE.Vector3(rand(-0.06, 0.06), rand(-0.04, 0.04), rand(-0.06, 0.06)));
+        dropTarget.copy(PLANT_POS).add(new THREE.Vector3(rand(-0.5, 0.5), 2.6, rand(-0.5, 0.5)));
+        d.v.subVectors(dropTarget, d.mesh.position);
+        const dist = d.v.length();
+        d.v.normalize().multiplyScalar(Math.max(1.6, dist * 1.4)).y += 1.4; // 포물선을 그리며 잎 쪽으로
+        perk = Math.min(1, perk + 0.05);
+      }
+    }
+    for (const d of drops) {
+      if (d.life <= 0) continue;
+      d.life -= dt;
+      d.v.y -= 9.5 * dt;
+      d.mesh.position.addScaledVector(d.v, dt);
+      if (d.life <= 0 || d.mesh.position.y < 1.25) {
+        d.life = 0;
+        d.mesh.visible = false;
+      }
+    }
+    perk = THREE.MathUtils.damp(perk, 0, 2.5, dt);
+    const wob = Math.sin(worldT * 14) * perk * 0.04;
+    bigPlant.scale.set(1.6 * (1 - wob * 0.5), 1.6 * (1 + wob), 1.6 * (1 - wob * 0.5));
+  }
 
   // 파란 쿠션 (왼쪽 벽 앞 바닥)
   const cushion = rbox(2.4, 0.6, 2.0, toon(0x7ea6e6), 0.28);
@@ -557,6 +614,8 @@ export function createHouse() {
   let streamTimer = 0;
   const RED_TINT = new THREE.Color(0xff5a48);
   function update(dt, t, horrorBlend, streaming = false, daylight = 0) {
+    worldT = t;
+    updateWater(dt);
     // 창밖 디오라마: 숲과 같은 시간대 (으스스함이 있으면 그만큼 밤에 가깝게)
     const dayOut = THREE.MathUtils.clamp(daylight * (1 - horrorBlend), 0, 1);
     for (const m of outDayNight) m.mat.color.copy(m.night).lerp(m.day, dayOut);
@@ -622,6 +681,15 @@ export function createHouse() {
       heading: Math.PI, // 모니터(-z)를 향함
       approach: new THREE.Vector3(CHAIR.x, 0, CHAIR.z + 1.9),
       radius: 2.6,
+    },
+    // 창문 옆 큰 화분: 앞에 서면 E 물주기. water(from, duration) 로 물방울 연출
+    plant: {
+      group: bigPlant,
+      position: PLANT_POS,
+      approach: new THREE.Vector3(SHELF.x, 0, FRONT_Z - 3.4),
+      radius: 2.2,
+      prompt: new THREE.Vector3(SHELF.x, 4.0, FRONT_Z - 1.4),
+      water: waterPlant,
     },
     // 컴퓨터: 근처에서 E 를 누르면 자리에 앉아 게임 접속(방송 시작). prompt 는 "E" 안내가 뜨는 위치
     computer: {

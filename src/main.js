@@ -19,7 +19,7 @@ import { createAudio } from './systems/audio.js';
 import { createSettings } from './ui/settings.js';
 
 // 디버그용 URL 파라미터: ?world=forest, ?viadoor=1, ?keys=KeyW,ShiftLeft, ?horror=1, ?sit=1, ?stream=1|now, ?day=N, ?done=stream,recruit,
-//   ?companion=1, ?talk=1, ?cam=x,y,z, ?at=x,z, ?yaw=&dist=&height=, ?steps=N, ?gkeys=ArrowLeft, ?gat=x,y, ?pickaxe=1, ?smash=1|hits|chop|statue|warn|choice|rubble|monster, ?monster=1|거리, ?mcam=side,up,front[,aim]
+//   ?companion=1, ?talk=1, ?cam=x,y,z, ?at=x,z, ?yaw=&dist=&height=, ?steps=N, ?gkeys=ArrowLeft, ?gat=x,y, ?water=1, ?pickaxe=1, ?smash=1|hits|chop|statue|warn|choice|rubble|monster, ?monster=1|거리, ?mcam=side,up,front[,aim]
 const params = new URLSearchParams(location.search);
 
 // ---------- 렌더러 / 씬 / 카메라 ----------
@@ -359,6 +359,7 @@ function currentAction() {
   if (!walking()) return null;
   if (near(world.computer)) return { label: '게임 방송 시작', at: world.computer.prompt, run: startStreaming };
   if (near(world.bed)) return { label: '잠자기', at: world.bed.prompt, run: trySleep };
+  if (near(world.plant) && performance.now() >= busyUntil) return { label: '물주기', at: world.plant.prompt, run: waterPlant };
   const p = world.props;
   if (p) {
     if (nearProp(p.grapes) && plan.pending('grapes')) return { label: '포도 따 먹기', at: p.grapes.prompt, run: eatGrapes };
@@ -381,6 +382,22 @@ function currentAction() {
 function interact() {
   const a = currentAction();
   if (a) a.run();
+}
+// ---------- 화분 물주기 (창문 옆 큰 화분) ----------
+let busyUntil = 0; // 짧은 동작(물주기) 중에는 이동/상호작용 금지 (ms 타임스탬프)
+const WATER_LINES = ['물 먹고 쑥쑥 자라라~', '오늘도 싱싱하네.', '잎이 반짝반짝해졌다.', '...너는 참 조용해서 좋아.'];
+const tmpWaterDir = new THREE.Vector3();
+function waterPlant(dur = 1.6) {
+  const p = world.plant;
+  if (!p) return;
+  busyUntil = performance.now() + dur * 1000 + 150;
+  faceTarget(p.position);
+  fox.water(dur);
+  // 물뿌리개 주둥이 위치: 노미요 앞쪽 약간 위
+  tmpWaterDir.set(Math.sin(foxState.heading), 0, Math.cos(foxState.heading));
+  p.water(tmpWaterDir.multiplyScalar(0.95).add(fox.group.position).setY(2.35), dur);
+  audio.sfx.water();
+  setTimeout(() => fox.say(WATER_LINES[Math.floor(Math.random() * WATER_LINES.length)], 1.9), dur * 1000 - 200);
 }
 
 const scare = createScare({ flashEl: document.getElementById('scareFlash') });
@@ -1033,6 +1050,8 @@ if (params.has('monster')) {
     camLocked = true;
   }
 }
+// ?water=1 : 화분 앞에 서서 바로 물주기 시작 (애니메이션 확인용, ?at 과 함께)
+if (params.has('water') && world.plant) setTimeout(() => waterPlant(parseFloat(params.get('water')) || 1.6), 50); // ?water=6 처럼 초 단위 길이 지정 가능
 // ?cam=x,y,z : 카메라를 그 위치에 두고 여우를 바라봄 (스크린샷 디버그용)
 if (params.has('cam')) {
   const [x, y, z] = params.get('cam').split(',').map(Number);
@@ -1076,7 +1095,7 @@ function updateFox(dt) {
   if (keys.has('KeyA') || keys.has('ArrowLeft')) ix -= 1;
   if (keys.has('KeyD') || keys.has('ArrowRight')) ix += 1;
   const running = keys.has('ShiftLeft') || keys.has('ShiftRight');
-  const moving = (ix !== 0 || iz !== 0) && !choiceOpen && !ending && !crateOpened;
+  const moving = (ix !== 0 || iz !== 0) && !choiceOpen && !ending && !crateOpened && performance.now() >= busyUntil;
 
   if (foxState.sitting) {
     // 방송 중에는 이동 키를 무시 (E/Esc 로만). 앉아만 있을 때는 이동 키로 일어남

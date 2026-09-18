@@ -309,6 +309,11 @@ export function createAudio() {
       noiseBurst({ dur: 1.4, vol: 0.3, freq: 400, q: 0.4 });
       for (let i = 0; i < 8; i++) noiseBurst({ dur: 0.1, vol: 0.1, freq: 700 + Math.random() * 600, q: 1.5, delay: 0.2 + i * 0.13 });
     },
+    /** 물뿌리개로 물 주는 소리: 잔잔한 물줄기 쏴아 + 잎에 떨어지는 톡톡 */
+    water() {
+      for (let i = 0; i < 6; i++) noiseBurst({ dur: 0.32, vol: 0.05 + (i > 0 && i < 4 ? 0.025 : 0), freq: 2600 + Math.random() * 1200, q: 0.6, delay: 0.22 + i * 0.2 });
+      for (let i = 0; i < 5; i++) tone({ f0: 1500 + Math.random() * 800, f1: 900, dur: 0.05, vol: 0.04, delay: 0.5 + i * 0.22 + Math.random() * 0.1 });
+    },
     /** 치지직 (화면 노이즈와 함께) */
     static(dur = 0.8) {
       noiseBurst({ dur, vol: 0.22, freq: 3000, q: 0.3 });
