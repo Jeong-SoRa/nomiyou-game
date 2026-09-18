@@ -8,11 +8,10 @@ import { toon, mesh } from '../helpers.js';
  * 몸·목·팔·옷자락은 전부 새까맣게 어둠에 녹아들고, 얼굴만 핏기 없는 뼈색으로 희미하게 빛난다.
  * 파닥이였다는 흔적:
  *  - 하얗던 몸 색이 다 빠져 바싹 마른 뼈색 가면이 된 얼굴
- *  - 머리 위 대파 새싹이 말라 비틀어져 마디진 두 개의 뿔이 됨 (좌우 길이·굽음이 다름)
- *  - 볼에 남은 탈색된 볼터치 자국
+ *  - 머리 위 대파 새싹이 기괴하게 웃자라 여러 가닥으로 꺾이고 말리며 시들어, 몇 가닥은 얼굴 앞으로 흘러내림
  * 얼굴 특징:
  *  - 텅 빈 검은 눈구멍 (깊숙한 곳에서만 아주 작은 붉은 점이 빛남)
- *  - 좁고 길게 아래로 늘어진 두개골, 눈 위로 튀어나온 눈두덩 능선
+ *  - 좁고 길게 아래로 늘어진 두개골 (눈썹 없음)
  *  - 턱이 있을 수 없는 길이까지 아래로 축 늘어져 벌어진 입 — 위턱에서 긴 송곳니가 늘어지고,
  *    한참 아래 턱 끝에 작은 이빨 무더기가 모여 있다. 그 사이는 새까만 구멍
  * 기본 scale 1 일 때 키 ≈ 4.7 (노미요 ≈ 2.5 배 이상). 노미요를 내려다보는 자세.
@@ -26,7 +25,6 @@ const EYE_RED = 0xff0a0a;
 const VOID = 0x000000;
 const LEEK_ROT = 0x7d7f62; // 시든 대파 밑동(회녹색)
 const LEEK_DEAD = 0x3a3d2c; // 죽은 대파 잎 끝(검게 죽은 색)
-const CHEEK_FADED = 0x7e6a68; // 탈색된 볼터치 자국
 
 export function createMonster({ scale = 1 } = {}) {
   const root = new THREE.Group();
@@ -40,7 +38,6 @@ export function createMonster({ scale = 1 } = {}) {
   const mTooth = toon(TOOTH, { emissive: 0x2c2a26 });
   const mEye = new THREE.MeshBasicMaterial({ color: EYE_RED });
   const mVoid = new THREE.MeshBasicMaterial({ color: VOID });
-  const mCheek = toon(CHEEK_FADED, { emissive: 0x0e0a0a });
 
   // ---------- 몸통: 뼈가 도드라질 만큼 가늘고 긴 몸. 좌우가 완전히 대칭이지 않도록 살짝 비틀어 둔다 ----------
   const R = 0.58;
@@ -113,26 +110,6 @@ export function createMonster({ scale = 1 } = {}) {
   muzzle.scale.set(1, 1, 0.8);
   muzzle.position.set(0, -0.34, 0.18);
   headGroup.add(muzzle);
-  // 눈두덩 능선: 눈구멍 위로 툭 튀어나온 뼈. 만화 같은 '화난 눈썹'이 아니라 좌우가 다르게 비뚤어진 두개골 능선
-  for (const { s, y, tilt } of [
-    { s: -1, y: 0.33, tilt: 0.1 }, // 왼쪽은 거의 평평하게
-    { s: 1, y: 0.29, tilt: -0.3 }, // 오른쪽만 안쪽으로 눌려 내려감
-  ]) {
-    const brow = mesh(new THREE.BoxGeometry(0.32, 0.06, 0.15), mBoneDark);
-    brow.position.set(s * 0.21, y, 0.6);
-    brow.rotation.z = tilt;
-    brow.rotation.y = s * 0.35;
-    headGroup.add(brow);
-  }
-  // 탈색된 볼터치 자국 (파닥이의 분홍 볼이 남긴 흔적)
-  for (const s of [-1, 1]) {
-    const cheek = mesh(new THREE.SphereGeometry(0.085, 8, 6), mCheek);
-    cheek.scale.set(1.15, 0.7, 0.2);
-    cheek.position.set(s * 0.3, -0.3, 0.47);
-    cheek.rotation.y = s * 0.55;
-    headGroup.add(cheek);
-  }
-
   // 눈: 텅 빈 검은 구멍. 좌우 크기·높이가 다르다. 구멍 깊숙한 곳에 아주 작은 붉은 점만 빛난다
   const eyeSpecs = [
     { s: -1, x: 0.21, y: 0.14, z: 0.6, r: 0.145 },
@@ -214,58 +191,91 @@ export function createMonster({ scale = 1 } = {}) {
   throat.castShadow = false;
   headGroup.add(throat);
 
-  // ----- 뿔: 말라 비틀어진 대파 새싹이 마디진 뿔이 됐다. 좌우 길이·굽음이 다르다 -----
-  function addHorn(sign, { len, segs, bend, splay, baseR }) {
+  // ----- 머리 위 대파: 파닥이의 싱싱한 새싹이 기괴하게 웃자라 뒤틀리고 시든 모습 -----
+  // 부어오른 병든 밑동에서 굵기·길이가 제각각인 줄기가 여러 가닥 삐져나와 꺾이고 말리며,
+  // 잎 끝은 검게 죽어 축 늘어진다. 긴 가닥 몇 개는 얼굴 앞으로 흘러내려 눈구멍 옆을 스친다.
+  const leekRoot = new THREE.Group();
+  leekRoot.position.set(0.02, 0.66, 0.0);
+  leekRoot.rotation.z = -0.08;
+  headGroup.add(leekRoot);
+  const cLeekBase = new THREE.Color(LEEK_ROT);
+  const cLeekTip = new THREE.Color(LEEK_DEAD);
+  // 밑동: 매끈한 흰 밑동이 아니라 울퉁불퉁 부어오른 덩어리
+  const bulb = mesh(new THREE.SphereGeometry(0.24, 7, 6), toon(0x8f9478, { emissive: 0x11120c }));
+  bulb.scale.set(1.25, 0.85, 1.05);
+  leekRoot.add(bulb);
+  for (let i = 0; i < 3; i++) {
+    const lump = mesh(new THREE.SphereGeometry(0.07 + Math.random() * 0.05, 6, 5), toon(0x7f8468, { emissive: 0x0d0e09 }));
+    const a = Math.random() * Math.PI * 2;
+    lump.position.set(Math.cos(a) * 0.18, 0.02 + Math.random() * 0.08, Math.sin(a) * 0.15);
+    leekRoot.add(lump);
+  }
+  const leekStalks = []; // 흔들림 애니메이션용
+  /** 꺾이고 뒤틀린 줄기 한 가닥. dir: 밑동에서 뻗는 초기 방향(오일러), droop: 아래로 늘어지는 정도 */
+  function addStalk({ len, segs, r, dir, droop, kink, split }) {
     const base = new THREE.Group();
-    base.position.set(sign * 0.2, 0.62, 0.02);
-    base.rotation.z = sign * -0.28;
-    base.rotation.x = -0.1;
-    headGroup.add(base);
-    const cBase = new THREE.Color(LEEK_ROT);
-    const cTip = new THREE.Color(LEEK_DEAD);
+    base.rotation.set(dir[0], dir[1], dir[2]);
+    leekRoot.add(base);
     let parent = base;
     const h = len / segs;
+    let acc = 0;
     for (let i = 0; i < segs; i++) {
       const t0 = i / segs;
       const t1 = (i + 1) / segs;
-      const r0 = baseR * (1 - t0 * 0.82);
-      const r1 = baseR * (1 - t1 * 0.82);
       const g = new THREE.Group();
-      g.rotation.x = -bend * (0.35 + t0 * 1.3); // 위로 뻗다가 점점 뒤로 휜다
-      g.rotation.z = sign * -splay * (0.2 + t0 * 0.5); // 바깥쪽으로 벌어진다
+      // 매 마디마다 불규칙하게 꺾이고, 끝으로 갈수록 무게에 눌려 아래로 처진다
+      acc += droop * (0.4 + t0);
+      g.rotation.x = (Math.random() - 0.5) * kink + acc * 0.35;
+      g.rotation.z = (Math.random() - 0.5) * kink;
+      g.rotation.y = (Math.random() - 0.5) * 0.4;
       parent.add(g);
-      const col = cBase.clone().lerp(cTip, Math.pow(t1, 0.8));
-      const seg = mesh(new THREE.CylinderGeometry(r1, r0, h, 7), toon(col, { emissive: 0x0f100a }));
+      const col = cLeekBase.clone().lerp(cLeekTip, Math.pow(t1, 0.7));
+      const r0 = r * (1 - t0 * 0.75);
+      const r1 = r * (1 - t1 * 0.75);
+      const seg = mesh(new THREE.CylinderGeometry(r1, r0, h * 1.08, 6), toon(col, { emissive: 0x0b0c07 }));
+      seg.scale.set(1.6, 1, 0.45); // 파 잎처럼 넓적하고 납작하게
       seg.position.y = h / 2;
       g.add(seg);
-      // 마디: 매듭처럼 툭 튀어나온 고리
-      if (i > 0) {
-        const ring = mesh(new THREE.TorusGeometry(r0 * 1.05, r0 * 0.28, 5, 9), mBoneDark);
-        ring.rotation.x = Math.PI / 2;
-        g.add(ring);
+      // 마디: 접히거나 꺾인 자리에 생긴 옹이
+      if (i > 0 && Math.random() < 0.5) {
+        const knot = mesh(new THREE.SphereGeometry(r0 * 1.15, 5, 4), toon(col.clone().multiplyScalar(0.85)));
+        knot.scale.set(1, 0.7, 0.7);
+        g.add(knot);
       }
       const next = new THREE.Group();
       next.position.y = h;
       g.add(next);
       parent = next;
     }
-    // 뿔 밑동에서 축 늘어진 죽은 대파 잎 몇 가닥 (원래 새싹이었다는 흔적)
-    for (let i = 0; i < 2; i++) {
-      const leafLen = 0.28 + Math.random() * 0.14;
-      const leaf = mesh(new THREE.CapsuleGeometry(0.022, leafLen, 3, 5), toon(LEEK_DEAD));
-      const pivot = new THREE.Group();
-      pivot.position.y = 0.06;
-      pivot.rotation.z = sign * (0.9 + i * 0.5) + (Math.random() - 0.5) * 0.3;
-      pivot.rotation.x = (Math.random() - 0.5) * 0.8;
-      leaf.position.y = leafLen / 2;
-      leaf.rotation.z = (Math.random() - 0.5) * 0.5;
-      pivot.add(leaf);
-      base.add(pivot);
+    // 끝이 두 갈래로 찢어진 잎
+    if (split) {
+      for (const sgn of [-1, 1]) {
+        const tipLen = 0.16 + Math.random() * 0.12;
+        const tip = mesh(new THREE.ConeGeometry(r * 0.22, tipLen, 4), toon(LEEK_DEAD));
+        tip.position.set(sgn * 0.03, tipLen / 2, 0);
+        tip.rotation.z = sgn * (0.5 + Math.random() * 0.4);
+        parent.add(tip);
+      }
+    } else {
+      const tipLen = 0.14;
+      const tip = mesh(new THREE.ConeGeometry(r * 0.25, tipLen, 4), toon(LEEK_DEAD));
+      tip.position.y = tipLen / 2;
+      parent.add(tip);
     }
+    leekStalks.push({ base, seed: Math.random() * 10, amp: 0.02 + droop * 0.03, rx: base.rotation.x, rz: base.rotation.z });
     return base;
   }
-  addHorn(-1, { len: 1.35, segs: 8, bend: 0.28, splay: 0.16, baseR: 0.11 }); // 왼쪽이 더 길고 크게 휜다
-  addHorn(1, { len: 1.0, segs: 7, bend: 0.2, splay: 0.24, baseR: 0.095 });
+  // 굵고 긴 주 줄기: 위로 솟았다가 뒤로 꺾여 늘어진다
+  addStalk({ len: 1.6, segs: 8, r: 0.12, dir: [-0.25, 0, -0.15], droop: 0.16, kink: 0.5, split: true });
+  // 두 번째 굵은 줄기: 반대쪽으로 비스듬히, 더 심하게 꺾임
+  addStalk({ len: 1.2, segs: 7, r: 0.1, dir: [0.1, 0, 0.55], droop: 0.14, kink: 0.7, split: false });
+  // 얼굴 앞으로 흘러내리는 긴 가닥들: 눈구멍 옆을 스치며 축 늘어진다
+  addStalk({ len: 1.4, segs: 8, r: 0.08, dir: [0.9, 0, -0.5], droop: 0.32, kink: 0.35, split: true });
+  addStalk({ len: 1.1, segs: 7, r: 0.07, dir: [1.05, 0, 0.42], droop: 0.3, kink: 0.4, split: false });
+  // 짧고 비틀린 잔가닥들
+  addStalk({ len: 0.6, segs: 4, r: 0.07, dir: [-0.6, 0, 0.9], droop: 0.1, kink: 0.9, split: false });
+  addStalk({ len: 0.5, segs: 4, r: 0.06, dir: [-0.9, 0, -0.85], droop: 0.12, kink: 0.9, split: true });
+  addStalk({ len: 0.75, segs: 5, r: 0.06, dir: [0.35, 0, -1.1], droop: 0.25, kink: 0.6, split: false });
 
   // ---------- 팔: 좌우 길이가 다른, 뼈만 남은 듯 가늘고 긴 팔. 손끝은 길게 뻗은 발톱 여러 개 ----------
   const arms = [];
@@ -332,6 +342,12 @@ export function createMonster({ scale = 1 } = {}) {
       const sway = Math.sin(time * 1.6 + tt.seed) * 0.12;
       tt.mesh.rotation.x = Math.PI + sway;
       tt.mesh.rotation.z = Math.sin(time * 1.1 + tt.seed) * 0.15;
+    }
+
+    // 시든 대파 가닥: 머리 움직임에 늦게 따라오며 흐느적거리고, 경련 때 함께 파르르 떨린다
+    for (const st of leekStalks) {
+      st.base.rotation.x = st.rx + Math.sin(time * 1.3 + st.seed) * st.amp + jitter * 0.8;
+      st.base.rotation.z = st.rz + Math.sin(time * 0.9 + st.seed * 1.7) * st.amp * 0.7 + jitter * 0.5;
     }
 
     eyeLight.intensity = 1.0 + Math.sin(time * 6) * 0.3 + (twitch > 0 ? 2.5 : 0);
