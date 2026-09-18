@@ -3,20 +3,30 @@ import { toon, mesh } from '../helpers.js';
 
 /**
  * 숲의 괴물 — 오염이 극한까지 치달은 파닥이의 최종 형태.
- * 이 게임의 다른 캐릭터들과 달리 일부러 "귀여움의 규칙"을 깬다: 깔끔한 만화 외곽선이 없고,
- * 좌우 대칭이 무너져 있으며, 매끈한 구체가 아니라 각진 저폴리 두개골이다.
- * 파닥이 특유의 귀여운 '대파 새싹'이 뒤틀리고 시든 채로 머리에 남아 있다(원래 파닥이였다는 흔적).
- * 발 대신 새까맣고 너덜너덜한 옷자락을 끌며 땅 위에 둥둥 떠 있다.
- * 입은 좌우 입꼬리가 뒤틀려 올라간 채 얼굴 절반을 가르는 기괴한 미소 — 그 안에 이빨이 빽빽하다.
- * 기본 scale 1 일 때 키 ≈ 4.6 (노미요 ≈ 2.5 배 이상). 노미요를 내려다보는 자세.
+ *
+ * 디자인 방향: 어둠 속에서 "창백한 뼈 가면 얼굴"만 둥둥 떠 보이는 구조.
+ * 몸·목·팔·옷자락은 전부 새까맣게 어둠에 녹아들고, 얼굴만 핏기 없는 뼈색으로 희미하게 빛난다.
+ * 파닥이였다는 흔적:
+ *  - 하얗던 몸 색이 다 빠져 바싹 마른 뼈색 가면이 된 얼굴
+ *  - 머리 위 대파 새싹이 말라 비틀어져 마디진 두 개의 뿔이 됨 (좌우 길이·굽음이 다름)
+ *  - 볼에 남은 탈색된 볼터치 자국
+ * 얼굴 특징:
+ *  - 텅 빈 검은 눈구멍 (깊숙한 곳에서만 아주 작은 붉은 점이 빛남)
+ *  - 좁고 길게 아래로 늘어진 두개골, 눈 위로 튀어나온 눈두덩 능선
+ *  - 턱이 있을 수 없는 길이까지 아래로 축 늘어져 벌어진 입 — 위턱에서 긴 송곳니가 늘어지고,
+ *    한참 아래 턱 끝에 작은 이빨 무더기가 모여 있다. 그 사이는 새까만 구멍
+ * 기본 scale 1 일 때 키 ≈ 4.7 (노미요 ≈ 2.5 배 이상). 노미요를 내려다보는 자세.
  */
 const BLACK = 0x040404;
 const BLACK_DEEP = 0x000000;
-const TOOTH = 0xd8d0bf; // 날카로움이 도드라지게 더 밝은 뼈색
-const EYE_RED = 0xff0000;
+const BONE = 0xd6cdb8; // 창백한 뼈 가면 (파닥이의 흰색에서 생기가 다 빠진 색)
+const BONE_DARK = 0xa9a08c; // 가면의 그늘진 부위(턱 안쪽, 뿔 마디)
+const TOOTH = 0xe8e2d4;
+const EYE_RED = 0xff0a0a;
 const VOID = 0x000000;
-const LEEK_ROT = 0x767a5c; // 시든 대파 밑동(파닥이의 싱싱한 흰색이 아니라 병든 회녹색)
-const LEEK_DEAD = 0x3c4530; // 시든 대파 잎(파닥이의 생기있는 초록이 아니라 검게 죽어가는 색)
+const LEEK_ROT = 0x7d7f62; // 시든 대파 밑동(회녹색)
+const LEEK_DEAD = 0x3a3d2c; // 죽은 대파 잎 끝(검게 죽은 색)
+const CHEEK_FADED = 0x7e6a68; // 탈색된 볼터치 자국
 
 export function createMonster({ scale = 1 } = {}) {
   const root = new THREE.Group();
@@ -25,29 +35,30 @@ export function createMonster({ scale = 1 } = {}) {
 
   const mBlack = toon(BLACK); // 발광 없음: 빛이 거의 닿지 않으면 어둠과 거의 구분되지 않는다
   const mDeep = toon(BLACK_DEEP);
-  const mTooth = toon(TOOTH);
+  const mBone = toon(BONE, { emissive: 0x2a2620 }); // 빛이 없어도 희미하게 떠 보이도록 약한 자체 발광
+  const mBoneDark = toon(BONE_DARK, { emissive: 0x1a1714 });
+  const mTooth = toon(TOOTH, { emissive: 0x2c2a26 });
   const mEye = new THREE.MeshBasicMaterial({ color: EYE_RED });
   const mVoid = new THREE.MeshBasicMaterial({ color: VOID });
-  const mLeekRot = toon(LEEK_ROT);
-  const mLeekDead = toon(LEEK_DEAD);
+  const mCheek = toon(CHEEK_FADED, { emissive: 0x0e0a0a });
 
   // ---------- 몸통: 뼈가 도드라질 만큼 가늘고 긴 몸. 좌우가 완전히 대칭이지 않도록 살짝 비틀어 둔다 ----------
   const R = 0.58;
-  const LEN = 3.5;
+  const LEN = 2.6; // 몸통 자체는 짧게 — 그 위로 긴 목과 머리가 올라간다
   const BODY_Y = R + LEN / 2 - 0.05;
   const body = new THREE.Group();
   body.position.y = BODY_Y;
   body.rotation.z = -0.06; // 척추가 한쪽으로 살짝 굽은 듯
   root.add(body);
   const shell = mesh(new THREE.CapsuleGeometry(R, LEN, 4, 8), mBlack); // 세그먼트를 줄여 매끈함을 덜어냄(각진 인상)
-  shell.scale.set(0.78, 1, 0.68);
+  shell.scale.set(0.7, 1, 0.6); // 얼굴이 도드라지도록 몸은 더 가늘게
   body.add(shell);
 
   // 등을 따라 삐져나온 뼈 가시 (매끈한 실루엣을 깨는 요소)
   for (let i = 0; i < 6; i++) {
     const t = i / 5;
-    const spike = mesh(new THREE.ConeGeometry(0.045, 0.32 - t * 0.14, 5), mTooth);
-    spike.position.set((Math.random() - 0.5) * 0.08, LEN * 0.42 - t * LEN * 0.85, -R * 0.62);
+    const spike = mesh(new THREE.ConeGeometry(0.045, 0.32 - t * 0.14, 5), mBoneDark);
+    spike.position.set((Math.random() - 0.5) * 0.08, LEN * 0.42 - t * LEN * 0.85, -R * 0.55);
     spike.rotation.x = Math.PI * 0.42 + (Math.random() - 0.5) * 0.3;
     spike.rotation.z = (Math.random() - 0.5) * 0.5;
     body.add(spike);
@@ -78,110 +89,183 @@ export function createMonster({ scale = 1 } = {}) {
     tatters.push({ mesh: tatter, seed: Math.random() * 10, baseX: rx, baseZ: rz });
   }
 
-  // ---------- 머리: 몸통보다 훨씬 위, 긴 목 끝에 달려 있어 노미요를 내려다보는 구도가 된다. 부리 없음 ----------
+  // ---------- 머리: 몸통 꼭대기 위, 앞으로 쭉 내민 목 끝에 달려 있다. 얼굴과 늘어진 턱 전체가 검은 몸 앞에 떠 보인다 ----------
   const headGroup = new THREE.Group();
-  headGroup.position.set(0.05, 1.78, 0.03); // 몸통 꼭대기보다도 높게 — 위에서 내려다보는 자세
-  headGroup.rotation.set(0.55, 0.04, 0.05); // 고개를 숙여 아래(노미요)를 내려다봄
+  headGroup.position.set(0.05, 2.7, 0.75);
+  headGroup.rotation.set(0.3, 0.04, 0.05); // 고개를 숙여 아래(노미요)를 내려다봄
   body.add(headGroup);
   const HEAD_TILT = headGroup.rotation.x;
 
-  // 머리 크기를 키움 (더 위협적으로 도드라지도록)
-  const skull = mesh(new THREE.OctahedronGeometry(0.5, 0), mBlack); // 매끈한 구 대신 각진 다면체
-  skull.scale.set(0.95, 0.85, 1.95);
-  skull.position.z = 0.36;
-  headGroup.add(skull);
-  // 목: 몸통 꼭대기까지 이어지는 긴 목 (머리를 높이 든 자세를 만드는 핵심 요소)
-  const neck = mesh(new THREE.CylinderGeometry(0.34, 0.52, 1.7, 6), mBlack);
-  neck.position.set(-0.02, -0.85, -0.28);
-  neck.rotation.x = 0.5;
+  // 목: 두개골 뒤에서 몸통 꼭대기 안쪽으로 비스듬히 이어지는 가늘고 긴 목
+  const neck = mesh(new THREE.CylinderGeometry(0.17, 0.36, 1.5, 6), mBlack);
+  neck.position.set(-0.02, -0.98, -0.47);
+  neck.rotation.x = 0.46;
   headGroup.add(neck);
 
-  // ---------- 시든 대파 새싹 (원래 파닥이였다는 흔적) — 뿔처럼 두 개, 좌우가 다르게 뒤틀려 있다 ----------
-  function addLeek(x, twistSign, big) {
-    const g = new THREE.Group();
-    g.position.set(x, 0.42, 0.15);
-    g.rotation.z = twistSign * (0.35 + (big ? 0.1 : 0));
-    g.rotation.x = -0.15;
-    headGroup.add(g);
-    const bulb = mesh(new THREE.SphereGeometry(big ? 0.13 : 0.1, 8, 6), mLeekRot);
-    bulb.scale.set(1, 1.3, 1);
-    g.add(bulb);
-    const bladeN = big ? 3 : 2;
-    for (let i = 0; i < bladeN; i++) {
-      const len = (big ? 0.55 : 0.4) + i * 0.1 + Math.random() * 0.1;
-      const blade = mesh(new THREE.CapsuleGeometry(0.035, len, 3, 6), i === 1 ? mLeekDead : mLeekRot);
-      const pivot = new THREE.Group();
-      pivot.position.y = 0.12;
-      // 싱싱하게 곧게 뻗은 파닥이 잎과 달리, 꺾이고 축 처지거나 기괴하게 말려 있다
-      pivot.rotation.z = twistSign * (0.3 + i * 0.35) + (Math.random() - 0.5) * 0.3;
-      pivot.rotation.x = (Math.random() - 0.5) * 0.6;
-      blade.position.y = len / 2 + 0.02;
-      blade.rotation.z = (Math.random() - 0.5) * 0.4; // 잎 자체도 곧지 않고 뒤틀림
-      pivot.add(blade);
-      g.add(pivot);
-    }
-    return g;
+  // ----- 뼈 가면 얼굴 -----
+  // 두개골 윗부분: 둥근 머리통
+  const cranium = mesh(new THREE.SphereGeometry(0.5, 12, 9), mBone);
+  cranium.scale.set(0.8, 1.08, 0.9); // 좁고 높은 두개골
+  cranium.position.set(0, 0.24, 0.14);
+  headGroup.add(cranium);
+  // 얼굴 아랫부분: 아래로 갈수록 좁아지는 긴 주둥이(위턱). 앞뒤로 납작하게 눌러 가면 느낌
+  const muzzle = mesh(new THREE.CylinderGeometry(0.4, 0.24, 1.1, 9), mBone);
+  muzzle.scale.set(1, 1, 0.8);
+  muzzle.position.set(0, -0.34, 0.18);
+  headGroup.add(muzzle);
+  // 눈두덩 능선: 눈구멍 위로 툭 튀어나온 뼈. 만화 같은 '화난 눈썹'이 아니라 좌우가 다르게 비뚤어진 두개골 능선
+  for (const { s, y, tilt } of [
+    { s: -1, y: 0.33, tilt: 0.1 }, // 왼쪽은 거의 평평하게
+    { s: 1, y: 0.29, tilt: -0.3 }, // 오른쪽만 안쪽으로 눌려 내려감
+  ]) {
+    const brow = mesh(new THREE.BoxGeometry(0.32, 0.06, 0.15), mBoneDark);
+    brow.position.set(s * 0.21, y, 0.6);
+    brow.rotation.z = tilt;
+    brow.rotation.y = s * 0.35;
+    headGroup.add(brow);
   }
-  const leekL = addLeek(-0.22, -1, true);
-  const leekR = addLeek(0.24, 1, false); // 좌우 크기가 다르다 — 여기서도 비대칭
-
-  // 입: 부리 없이, 좌우 입꼬리가 뒤틀려 올라간 채 얼굴을 가르는 기괴한 미소.
-  // 가운데는 얼굴 안쪽까지 뚫린 새까만 틈이고, 그 가장자리를 이빨이 빽빽하고 들쭉날쭉하게 두르고 있다
-  const mawCenter = mesh(new THREE.SphereGeometry(0.4, 14, 10), mVoid);
-  mawCenter.scale.set(1.5, 0.56, 0.62);
-  mawCenter.position.set(0.02, -0.14, 1.0);
-  headGroup.add(mawCenter);
-  // 양쪽 입꼬리: 비대칭으로 뒤틀려 위로 말려 올라간 웃음
-  const mawCornerL = mesh(new THREE.SphereGeometry(0.28, 10, 8), mVoid);
-  mawCornerL.scale.set(1, 1, 0.8);
-  mawCornerL.position.set(-0.52, 0.06, 0.86);
-  mawCornerL.rotation.z = 0.5;
-  headGroup.add(mawCornerL);
-  const mawCornerR = mesh(new THREE.SphereGeometry(0.33, 10, 8), mVoid);
-  mawCornerR.scale.set(1, 1, 0.8);
-  mawCornerR.position.set(0.56, 0.16, 0.82); // 오른쪽이 더 위까지 찢어져 있다
-  mawCornerR.rotation.z = -0.75;
-  headGroup.add(mawCornerR);
-
-  // 이빨: 활짝 벌어진 웃음을 따라 빽빽하게 — 가운데는 길게 송곳니처럼, 입꼬리로 갈수록 작고 삐뚤어짐
-  const teeth = [];
-  const TOOTH_COUNT = 24;
-  for (let i = 0; i < TOOTH_COUNT; i++) {
-    const t = i / (TOOTH_COUNT - 1); // 0(왼쪽 입꼬리) → 1(오른쪽 입꼬리)
-    const x = THREE.MathUtils.lerp(-0.58, 0.62, t);
-    const arch = Math.sin(t * Math.PI); // 가운데가 볼록한 아치형 입
-    const centerBias = Math.max(0, 1 - Math.abs(t - 0.46) * 1.7);
-    const len = THREE.MathUtils.clamp(0.3 + centerBias * 0.85 + (Math.random() - 0.5) * 0.25, 0.26, 1.15);
-    const z = 0.66 + arch * 0.5;
-    const y = 0.1 + arch * 0.08; // 웃음 곡선을 따라 입꼬리 쪽이 살짝 위로
-    const fromTop = i % 2 === 0;
-    const tooth = mesh(new THREE.ConeGeometry(0.055, len, 5), mTooth);
-    tooth.position.set(x, y + (fromTop ? -len / 2 + 0.04 : len / 2 - 0.04), z);
-    tooth.rotation.x = fromTop ? Math.PI : 0;
-    tooth.rotation.z = (Math.random() - 0.5) * 0.5;
-    tooth.rotation.x += (Math.random() - 0.5) * 0.3;
-    headGroup.add(tooth);
-    teeth.push(tooth);
+  // 탈색된 볼터치 자국 (파닥이의 분홍 볼이 남긴 흔적)
+  for (const s of [-1, 1]) {
+    const cheek = mesh(new THREE.SphereGeometry(0.085, 8, 6), mCheek);
+    cheek.scale.set(1.15, 0.7, 0.2);
+    cheek.position.set(s * 0.3, -0.3, 0.47);
+    cheek.rotation.y = s * 0.55;
+    headGroup.add(cheek);
   }
 
-  // 눈: 좌우 크기·높이가 다르다 — 잘못 봉합된 듯한 비대칭. 눈썹도 하이라이트도 없이 붉게만 빛난다
+  // 눈: 텅 빈 검은 구멍. 좌우 크기·높이가 다르다. 구멍 깊숙한 곳에 아주 작은 붉은 점만 빛난다
   const eyeSpecs = [
-    { s: -1, x: 0.34, y: 0.32, z: 0.68, r: 0.12 },
-    { s: 1, x: 0.27, y: 0.2, z: 0.7, r: 0.08 },
+    { s: -1, x: 0.21, y: 0.14, z: 0.6, r: 0.145 },
+    { s: 1, x: 0.2, y: 0.09, z: 0.6, r: 0.12 },
   ];
   const eyes = [];
   for (const { s, x, y, z, r } of eyeSpecs) {
+    const socket = mesh(new THREE.SphereGeometry(r, 10, 8), mVoid);
+    socket.scale.set(1, 1.15, 0.32); // 납작하게 — 튀어나온 공이 아니라 파인 구멍처럼 보이게
+    socket.position.set(s * x, y, z - 0.03);
+    socket.castShadow = false;
+    headGroup.add(socket);
     const eye = new THREE.Group();
-    eye.position.set(s * x, y, z);
-    const ball = mesh(new THREE.SphereGeometry(r, 8, 6), mEye);
-    ball.scale.set(1, 0.65, 0.4);
-    eye.add(ball);
+    eye.position.set(s * x, y - 0.01, z - 0.03 + r * 0.32 + 0.006);
+    const dot = mesh(new THREE.SphereGeometry(0.022, 6, 5), mEye);
+    dot.castShadow = false;
+    eye.add(dot);
     headGroup.add(eye);
     eyes.push(eye);
   }
-  const eyeLight = new THREE.PointLight(EYE_RED, 4.5, 7.5, 2);
-  eyeLight.position.set(0.14, 0.24, 1.2);
+  const eyeLight = new THREE.PointLight(EYE_RED, 1.4, 5, 2);
+  eyeLight.position.set(0, 0.12, 0.95);
   headGroup.add(eyeLight);
+
+  // 위턱 이빨: 주둥이 아랫단을 따라 늘어진 송곳니. 가운데가 가장 길고 가장자리로 갈수록 짧고 삐뚤다
+  const MUZZLE_BOTTOM = -0.34 - 0.55;
+  const UPPER_N = 9;
+  for (let i = 0; i < UPPER_N; i++) {
+    const t = i / (UPPER_N - 1);
+    const arch = Math.sin(t * Math.PI);
+    const x = THREE.MathUtils.lerp(-0.2, 0.22, t);
+    const z = 0.18 + 0.04 + arch * 0.15;
+    const len = THREE.MathUtils.clamp(0.22 + arch * 0.42 + (Math.random() - 0.5) * 0.12, 0.18, 0.66);
+    const tooth = mesh(new THREE.ConeGeometry(0.038, len, 5), mTooth);
+    tooth.position.set(x, MUZZLE_BOTTOM - len / 2 + 0.03, z);
+    tooth.rotation.x = Math.PI + (Math.random() - 0.5) * 0.2;
+    tooth.rotation.z = (Math.random() - 0.5) * 0.35;
+    headGroup.add(tooth);
+  }
+
+  // ----- 아래턱: 있을 수 없는 길이로 축 늘어져 벌어진 턱 -----
+  const JAW_LEN = 1.55;
+  const jawGroup = new THREE.Group();
+  jawGroup.position.set(0, -0.5, -0.1); // 두개골 뒤쪽 턱관절에서 매달린다
+  headGroup.add(jawGroup);
+  const JAW_BASE = -0.14; // 음수일수록 턱 끝이 앞으로 나온다(더 벌어진 입). 거의 수직으로 축 늘어진 상태
+  jawGroup.rotation.x = JAW_BASE;
+  // 양쪽 턱뼈 가닥: 좁고 긴 U 자의 두 변
+  for (const s of [-1, 1]) {
+    const rail = mesh(new THREE.CapsuleGeometry(0.065, JAW_LEN - 0.1, 4, 7), mBone);
+    rail.position.set(s * 0.26, -JAW_LEN / 2, 0.26);
+    rail.rotation.z = s * -0.04; // 아래로 갈수록 살짝 모인다
+    jawGroup.add(rail);
+  }
+  // 턱 끝: 둥근 턱뼈 덩어리 + 그 위에 모여 있는 작은 이빨 무더기
+  const chin = mesh(new THREE.SphereGeometry(0.3, 8, 6), mBone);
+  chin.scale.set(1.05, 0.5, 0.75);
+  chin.position.set(0, -JAW_LEN + 0.05, 0.27);
+  jawGroup.add(chin);
+  const LOWER_N = 7;
+  for (let i = 0; i < LOWER_N; i++) {
+    const t = i / (LOWER_N - 1);
+    const x = THREE.MathUtils.lerp(-0.2, 0.2, t);
+    const len = 0.16 + Math.sin(t * Math.PI) * 0.16 + Math.random() * 0.05;
+    const tooth = mesh(new THREE.ConeGeometry(0.03, len, 5), mTooth);
+    tooth.position.set(x, -JAW_LEN + 0.12 + len / 2, 0.27 + (Math.random() - 0.5) * 0.06);
+    tooth.rotation.z = (Math.random() - 0.5) * 0.4;
+    tooth.rotation.x = (Math.random() - 0.5) * 0.25;
+    jawGroup.add(tooth);
+  }
+  // 입 안: 위턱과 턱 끝 사이를 새까맣게 채우는 구멍 (몸통의 가시 등이 비치지 않게)
+  const mouthVoid = mesh(new THREE.BoxGeometry(0.5, JAW_LEN - 0.05, 0.05), mVoid);
+  mouthVoid.position.set(0, -JAW_LEN / 2 + 0.02, 0.06); // 턱뼈 가닥보다 뒤쪽 — 얼굴 앞면을 가리지 않게
+  mouthVoid.castShadow = false;
+  jawGroup.add(mouthVoid);
+  // 턱 안쪽으로 이어지는 검은 목구멍(뒤쪽을 막아 얼굴 뒤가 보이지 않게)
+  const throat = mesh(new THREE.BoxGeometry(0.5, 0.5, 0.4), mVoid);
+  throat.position.set(0, -0.95, -0.06);
+  throat.castShadow = false;
+  headGroup.add(throat);
+
+  // ----- 뿔: 말라 비틀어진 대파 새싹이 마디진 뿔이 됐다. 좌우 길이·굽음이 다르다 -----
+  function addHorn(sign, { len, segs, bend, splay, baseR }) {
+    const base = new THREE.Group();
+    base.position.set(sign * 0.2, 0.62, 0.02);
+    base.rotation.z = sign * -0.28;
+    base.rotation.x = -0.1;
+    headGroup.add(base);
+    const cBase = new THREE.Color(LEEK_ROT);
+    const cTip = new THREE.Color(LEEK_DEAD);
+    let parent = base;
+    const h = len / segs;
+    for (let i = 0; i < segs; i++) {
+      const t0 = i / segs;
+      const t1 = (i + 1) / segs;
+      const r0 = baseR * (1 - t0 * 0.82);
+      const r1 = baseR * (1 - t1 * 0.82);
+      const g = new THREE.Group();
+      g.rotation.x = -bend * (0.35 + t0 * 1.3); // 위로 뻗다가 점점 뒤로 휜다
+      g.rotation.z = sign * -splay * (0.2 + t0 * 0.5); // 바깥쪽으로 벌어진다
+      parent.add(g);
+      const col = cBase.clone().lerp(cTip, Math.pow(t1, 0.8));
+      const seg = mesh(new THREE.CylinderGeometry(r1, r0, h, 7), toon(col, { emissive: 0x0f100a }));
+      seg.position.y = h / 2;
+      g.add(seg);
+      // 마디: 매듭처럼 툭 튀어나온 고리
+      if (i > 0) {
+        const ring = mesh(new THREE.TorusGeometry(r0 * 1.05, r0 * 0.28, 5, 9), mBoneDark);
+        ring.rotation.x = Math.PI / 2;
+        g.add(ring);
+      }
+      const next = new THREE.Group();
+      next.position.y = h;
+      g.add(next);
+      parent = next;
+    }
+    // 뿔 밑동에서 축 늘어진 죽은 대파 잎 몇 가닥 (원래 새싹이었다는 흔적)
+    for (let i = 0; i < 2; i++) {
+      const leafLen = 0.28 + Math.random() * 0.14;
+      const leaf = mesh(new THREE.CapsuleGeometry(0.022, leafLen, 3, 5), toon(LEEK_DEAD));
+      const pivot = new THREE.Group();
+      pivot.position.y = 0.06;
+      pivot.rotation.z = sign * (0.9 + i * 0.5) + (Math.random() - 0.5) * 0.3;
+      pivot.rotation.x = (Math.random() - 0.5) * 0.8;
+      leaf.position.y = leafLen / 2;
+      leaf.rotation.z = (Math.random() - 0.5) * 0.5;
+      pivot.add(leaf);
+      base.add(pivot);
+    }
+    return base;
+  }
+  addHorn(-1, { len: 1.35, segs: 8, bend: 0.28, splay: 0.16, baseR: 0.11 }); // 왼쪽이 더 길고 크게 휜다
+  addHorn(1, { len: 1.0, segs: 7, bend: 0.2, splay: 0.24, baseR: 0.095 });
 
   // ---------- 팔: 좌우 길이가 다른, 뼈만 남은 듯 가늘고 긴 팔. 손끝은 길게 뻗은 발톱 여러 개 ----------
   const arms = [];
@@ -191,14 +275,14 @@ export function createMonster({ scale = 1 } = {}) {
   ];
   for (const { s, len } of ARM_SPECS) {
     const arm = new THREE.Group();
-    arm.position.set(s * 0.4, R * 0.15, 0.02);
-    const limb = mesh(new THREE.CapsuleGeometry(0.075, len, 4, 8), mBlack);
+    arm.position.set(s * 0.38, R * 0.15, 0.02);
+    const limb = mesh(new THREE.CapsuleGeometry(0.07, len, 4, 8), mBlack);
     limb.position.y = -len / 2 - 0.075;
     arm.add(limb);
-    // 손끝 발톱: 더 가늘고 길게 뻗어 부채꼴로 펼쳐 날카로움을 강조
+    // 손끝 발톱: 뼈색으로 어둠 속에서도 날카로움이 보인다
     const handY = -len - 0.15;
     for (let i = -2; i <= 2; i++) {
-      const claw = mesh(new THREE.ConeGeometry(0.028, 0.58, 4), mTooth);
+      const claw = mesh(new THREE.ConeGeometry(0.026, 0.6, 4), mTooth);
       claw.rotation.x = Math.PI / 2 + i * 0.17;
       claw.position.set(i * 0.075, handY, 0.16 + Math.abs(i) * 0.035);
       arm.add(claw);
@@ -208,13 +292,22 @@ export function createMonster({ scale = 1 } = {}) {
     arms.push(arm);
   }
 
-  // ---------- 애니메이션: 걷지 않고 둥둥 떠 있다 — 느리게 오르내리고, 옷자락이 흔들리며, 이따금 경련한다 ----------
+  // ---------- 애니메이션: 둥둥 떠서 느리게 오르내리고, 옷자락이 흔들리며, 이따금 경련한다 ----------
+  // 경련 순간: 고개가 옆으로 홱 꺾이고, 턱이 덜컥 더 벌어졌다가 천천히 돌아온다
   let time = Math.random() * 10;
   let twitch = 0;
+  let headTilt = 0; // 옆으로 꺾인 고개(천천히 돌아옴)
+  let jawSnap = 0; // 덜컥 벌어진 턱(천천히 돌아옴)
   function update(dt) {
     time += dt;
     twitch -= dt;
-    if (twitch <= 0 && Math.random() < dt * 0.6) twitch = 0.14;
+    if (twitch <= 0 && Math.random() < dt * 0.6) {
+      twitch = 0.14;
+      headTilt = (Math.random() < 0.5 ? -1 : 1) * (0.25 + Math.random() * 0.2);
+      jawSnap = 0.3 + Math.random() * 0.25;
+    }
+    headTilt *= Math.exp(-0.9 * dt);
+    jawSnap *= Math.exp(-1.6 * dt);
     const jitter = twitch > 0 ? (Math.random() - 0.5) * 0.11 : 0;
     const breathe = Math.sin(time * 1.15) * 0.028;
     const hover = Math.sin(time * 0.7) * 0.16; // 걷지 않고 천천히 위아래로 떠다님
@@ -225,7 +318,10 @@ export function createMonster({ scale = 1 } = {}) {
     body.rotation.x = 0.14 + jitter * 0.4;
 
     headGroup.rotation.x = HEAD_TILT + Math.sin(time * 0.65) * 0.03 + (twitch > 0 ? 0.16 : 0);
-    headGroup.rotation.z = 0.05 + jitter * 0.7;
+    headGroup.rotation.z = 0.05 + headTilt + jitter * 0.7;
+
+    // 턱: 축 늘어진 채 느리게 흔들리고, 잘게 딱딱거리며 떨린다
+    jawGroup.rotation.x = JAW_BASE - jawSnap + Math.sin(time * 0.9) * 0.05 + Math.sin(time * 23) * 0.012 + jitter * 0.5;
 
     for (const [i, arm] of arms.entries()) arm.rotation.x = Math.sin(time * 1.1 + i * 2) * 0.05 + jitter * 0.6;
 
@@ -238,8 +334,8 @@ export function createMonster({ scale = 1 } = {}) {
       tt.mesh.rotation.z = Math.sin(time * 1.1 + tt.seed) * 0.15;
     }
 
-    eyeLight.intensity = 3.2 + Math.sin(time * 6) * 0.7 + (twitch > 0 ? 3 : 0);
+    eyeLight.intensity = 1.0 + Math.sin(time * 6) * 0.3 + (twitch > 0 ? 2.5 : 0);
   }
 
-  return { group: root, update, eyes, height: (BODY_Y + 2.1) * scale };
+  return { group: root, update, eyes, height: (BODY_Y + 3.5) * scale };
 }
