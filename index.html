@@ -20,13 +20,142 @@
         border: 1px solid rgba(255,255,255,0.3); border-bottom-width: 2px; border-radius: 4px;
         font: 12px monospace; color: #fff; background: rgba(255,255,255,0.06);
       }
-      #mode { position: fixed; right: 16px; top: 16px; padding: 8px 14px; border-radius: 999px;
+      #mode { z-index: 10; position: fixed; right: 16px; top: 16px; padding: 8px 14px; border-radius: 999px;
         color: #ffb070; font: 600 13px system-ui, sans-serif; letter-spacing: 0.04em;
         background: rgba(10, 12, 20, 0.72); border: 1px solid rgba(255,176,112,0.4); }
       #mode.horror { color: #ff5c5c; border-color: rgba(255,92,92,0.5); }
-      #fade { position: fixed; inset: 0; background: #000; opacity: 0; pointer-events: none; transition: opacity 0.35s ease; }
+      #day { z-index: 10; position: fixed; right: 16px; top: 58px; padding: 5px 12px; border-radius: 999px;
+        color: #e8e6df; font: 600 12px system-ui, sans-serif; letter-spacing: 0.06em;
+        background: rgba(10, 12, 20, 0.6); border: 1px solid rgba(255,255,255,0.14); }
+      #scareFlash { z-index: 15; position: fixed; inset: 0; pointer-events: none; opacity: 0;
+        background: radial-gradient(ellipse at center, rgba(120,0,10,0.15) 0%, rgba(120,0,10,0.75) 100%); }
+      #scareFlash.on { animation: scareFlash 0.8s ease-out forwards; }
+      @keyframes scareFlash { 0% { opacity: 1; } 15% { opacity: 0.4; } 30% { opacity: 1; } 100% { opacity: 0; } }
+      #prompt {
+        position: fixed; left: 0; top: 0; padding: 6px 12px 6px 8px; border-radius: 999px;
+        display: flex; align-items: center; gap: 8px; white-space: nowrap;
+        color: #fff; font: 600 13px system-ui, "Malgun Gothic", sans-serif;
+        background: rgba(10, 12, 20, 0.78); border: 1px solid rgba(255,176,112,0.5);
+        box-shadow: 0 0 12px rgba(255,176,112,0.25);
+        opacity: 0; pointer-events: none; transition: opacity 0.15s ease;
+      }
+      #prompt.on { opacity: 1; }
+      #prompt kbd {
+        display: inline-block; min-width: 20px; text-align: center; padding: 1px 6px;
+        border: 1px solid rgba(255,255,255,0.45); border-bottom-width: 3px; border-radius: 5px;
+        font: 700 13px monospace; color: #ffb070; background: rgba(255,255,255,0.08);
+      }
+      #gameScreen {
+        position: fixed; inset: 0; z-index: 5; display: none; overflow: hidden;
+        background: linear-gradient(#070a16 0%, #0d1226 55%, #151a2e 100%);
+        color: #e8e6df; font: 14px system-ui, "Malgun Gothic", sans-serif;
+      }
+      #gameScreen.on { display: block; }
+      #gameScreen .gsStage {
+        position: absolute; inset: 0;
+        display: flex; align-items: center; justify-content: center;
+      }
+      #gameScreen .gsCanvas { image-rendering: pixelated; image-rendering: crisp-edges; background: #07070c; }
+      #gameScreen .gsTop { pointer-events: none; z-index: 2; position: absolute; left: 16px; top: 16px; display: flex; gap: 12px; align-items: center;
+        padding: 8px 14px; border-radius: 10px; background: rgba(10,12,20,0.72); border: 1px solid rgba(255,255,255,0.12); }
+      #gameScreen .gsLive { color: #ff5c5c; font-weight: 700; font-size: 12px; letter-spacing: 0.06em; animation: gsBlink 1.6s infinite; }
+      #gameScreen .gsTitle { font-weight: 700; color: #ffb070; font-size: 16px; }
+      #gameScreen .gsSub { color: rgba(232,230,223,0.7); font-size: 12px; }
+      #gameScreen .gsBottom { pointer-events: none; z-index: 2; position: absolute; left: 16px; bottom: 16px; display: flex; gap: 14px; align-items: center;
+        padding: 8px 14px; border-radius: 10px; background: rgba(10,12,20,0.72); border: 1px solid rgba(255,255,255,0.12); font-size: 13px; }
+      #gameScreen .gsStatus { color: rgba(232,230,223,0.7); }
+      @keyframes gsBlink { 0%, 60% { opacity: 1; } 80% { opacity: 0.3; } 100% { opacity: 1; } }
+      #gameScreen kbd {
+        display: inline-block; min-width: 18px; text-align: center; padding: 0 5px; margin: 0 4px 0 8px;
+        border: 1px solid rgba(255,255,255,0.3); border-bottom-width: 2px; border-radius: 4px;
+        font: 12px monospace; color: #fff; background: rgba(255,255,255,0.06);
+      }
+      #notice { z-index: 12; position: fixed; left: 50%; top: 18%; transform: translateX(-50%); padding: 10px 18px; border-radius: 10px;
+        background: rgba(10,12,20,0.82); border: 1px solid rgba(255,176,112,0.5); color: #ffe9c9;
+        font: 600 15px system-ui, "Malgun Gothic", sans-serif; opacity: 0; pointer-events: none; transition: opacity 0.2s ease; white-space: nowrap; }
+      #notice.on { opacity: 1; }
+      #dayCard { z-index: 21; position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none;
+        color: #e8e6df; font: 700 42px system-ui, "Malgun Gothic", sans-serif; letter-spacing: 0.3em; opacity: 0; transition: opacity 0.4s ease; }
+      #dayCard.on { opacity: 1; }
+      /* 분기 선택창: 게임 UI 풍 — 제목 + 좌우 커다란 버튼 (마우스 클릭 또는 1/2 키) */
+      #choice { z-index: 18; position: fixed; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center;
+        background: rgba(0,0,0,0.5); color: #e8e6df; font: 15px/1.6 system-ui, "Malgun Gothic", sans-serif; }
+      #choice.on { display: flex; }
+      #choice.low { justify-content: flex-end; padding-bottom: 9vh; }
+      #choice .q { font-size: 22px; font-weight: 800; letter-spacing: 0.08em; color: #f3ede0; text-shadow: 0 2px 10px rgba(0,0,0,0.8); margin-bottom: 20px;
+        padding: 8px 26px; border-top: 1px solid rgba(255,255,255,0.35); border-bottom: 1px solid rgba(255,255,255,0.35); }
+      #choice .btns { display: flex; gap: 26px; width: min(880px, 92vw); }
+      #choice .btn { flex: 1; position: relative; padding: 26px 22px 22px; border-radius: 16px; cursor: pointer; text-align: center; user-select: none;
+        background: linear-gradient(180deg, rgba(30,34,48,0.96), rgba(12,14,22,0.96)); border: 2px solid rgba(255,255,255,0.22);
+        box-shadow: 0 10px 30px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.15); transition: transform 0.12s, border-color 0.12s, box-shadow 0.12s; }
+      #choice .btn:hover, #choice .btn.hot { transform: translateY(-4px) scale(1.02); }
+      #choice .btn.break { border-color: rgba(190,220,255,0.55); }
+      #choice .btn.break:hover, #choice .btn.break.hot { border-color: #dbeeff; box-shadow: 0 0 34px rgba(160,200,255,0.55), 0 12px 30px rgba(0,0,0,0.6); }
+      #choice .btn.keep { border-color: rgba(255,90,90,0.55); background: linear-gradient(180deg, rgba(58,12,16,0.96), rgba(18,5,7,0.96)); }
+      #choice .btn.keep:hover, #choice .btn.keep.hot { border-color: #ff6a6a; box-shadow: 0 0 34px rgba(255,60,60,0.55), 0 12px 30px rgba(0,0,0,0.6); }
+      #choice .btn .ico { font-size: 44px; line-height: 1; margin-bottom: 10px; filter: drop-shadow(0 4px 8px rgba(0,0,0,0.6)); }
+      #choice .btn .ttl { font-size: 24px; font-weight: 800; letter-spacing: 0.06em; }
+      #choice .btn.break .ttl { color: #dbeeff; }
+      #choice .btn.keep .ttl { color: #ff8a8a; }
+      #choice .btn .sub { margin-top: 6px; font-size: 14px; opacity: 0.75; }
+      #choice .btn kbd { position: absolute; left: 14px; top: 12px; display: inline-block; min-width: 22px; padding: 2px 8px; border: 1px solid rgba(255,255,255,0.4);
+        border-bottom-width: 3px; border-radius: 6px; font: 700 13px monospace; color: #ffb070; background: rgba(255,255,255,0.08); }
+      #choice .btn:active { transform: translateY(1px) scale(0.99); }
+      /* 화면 지직거림: 가로 줄무늬 + 색 어긋남이 빠르게 흔들림 */
+      #glitch { z-index: 16; position: fixed; inset: 0; pointer-events: none; opacity: 0;
+        background:
+          repeating-linear-gradient(0deg, rgba(255,255,255,0.08) 0 2px, rgba(0,0,0,0.35) 2px 4px),
+          repeating-linear-gradient(90deg, rgba(255,0,60,0.25) 0 3px, transparent 3px 11px, rgba(0,200,255,0.2) 11px 13px, transparent 13px 37px);
+        mix-blend-mode: hard-light; }
+      #glitch.on { animation: glitchFx 1.2s steps(12) forwards; }
+      @keyframes glitchFx {
+        0% { opacity: 1; transform: translate(0, 0); background-position: 0 0, 0 0; }
+        20% { opacity: 0.9; transform: translate(-14px, 3px) skewX(2deg); background-position: 0 40px, 120px 0; }
+        40% { opacity: 1; transform: translate(10px, -6px); background-position: 0 -30px, -80px 0; }
+        60% { opacity: 0.7; transform: translate(-6px, 8px) skewX(-3deg); background-position: 0 90px, 40px 0; }
+        80% { opacity: 1; transform: translate(4px, -2px); background-position: 0 -70px, -160px 0; }
+        100% { opacity: 0; transform: translate(0, 0); }
+      }
+      /* 시뻘건 시스템 경고창 (점프스케어): 확 튀어나오며 떨림 */
+      #sysWarn { z-index: 19; position: fixed; left: 50%; top: 36%; transform: translate(-50%, -50%) scale(0); width: min(560px, 86vw);
+        border: 4px solid #ff1a1a; background: rgba(46, 0, 0, 0.96); color: #ff4d4d; font-family: 'Segoe UI', 'Malgun Gothic', sans-serif;
+        box-shadow: 0 0 40px rgba(255, 20, 20, 0.85), inset 0 0 30px rgba(255, 0, 0, 0.35); opacity: 0; pointer-events: none; }
+      #sysWarn.on { animation: sysPop 0.35s cubic-bezier(0.2, 1.6, 0.4, 1) forwards, sysShake 0.12s steps(2) 0.35s infinite; }
+      #sysWarn.dock { animation: none; opacity: 1; transform: translate(-50%, -50%) scale(0.72); top: 22%; transition: transform 0.4s, top 0.4s; }
+      #sysWarn .sysBar { padding: 6px 12px; background: #b00000; color: #fff; font-weight: 800; letter-spacing: 0.25em; font-size: 14px; }
+      #sysWarn .sysBody { padding: 30px 26px 34px; font-size: 28px; font-weight: 800; line-height: 1.45; text-align: center;
+        text-shadow: 0 0 12px #ff2020, 2px 0 #ff9090, -2px 0 #900; }
+      @keyframes sysPop { 0% { opacity: 0; transform: translate(-50%, -50%) scale(0.2) rotate(-4deg); } 60% { opacity: 1; transform: translate(-50%, -50%) scale(1.25) rotate(1.5deg); } 100% { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
+      @keyframes sysShake { 0% { margin-left: -4px; margin-top: 2px; } 50% { margin-left: 4px; margin-top: -3px; } 100% { margin-left: -2px; margin-top: 1px; } }
+      #ending { z-index: 30; position: fixed; inset: 0; display: none; align-items: center; justify-content: center; text-align: center;
+        color: #e8e6df; font: 16px/1.9 system-ui, "Malgun Gothic", sans-serif; opacity: 0; transition: opacity 1.6s ease; }
+      #ending.on { display: flex; opacity: 1; }
+      #ending.true { background: radial-gradient(ellipse at center, #f7f2e6 0%, #d9d2c2 100%); color: #3a2f28; }
+      #ending.bad { background: radial-gradient(ellipse at center, #2a0508 0%, #050203 100%); color: #ffb3b3; }
+      #ending .endTitle { font-size: 40px; font-weight: 700; letter-spacing: 0.2em; margin-bottom: 18px; }
+      #ending .endChat { font-size: 13px; opacity: 0.8; }
+      #ending .endHint { margin-top: 26px; font-size: 13px; opacity: 0.7; }
+      body.ingame #hud, body.ingame #prompt { display: none; }
+      body.ingame #chatLog { bottom: auto; top: 150px; max-height: 48vh; background: rgba(10,12,20,0.55); }
+      #settingsBtn { z-index: 11; position: fixed; right: 16px; top: 96px; width: 34px; height: 34px; border-radius: 999px; cursor: pointer;
+        color: #e8e6df; font-size: 18px; line-height: 1; background: rgba(10,12,20,0.6); border: 1px solid rgba(255,255,255,0.14); }
+      #settingsBtn:hover { border-color: rgba(255,176,112,0.6); color: #ffb070; }
+      #settings { z-index: 25; position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,0.45); }
+      #settings.on { display: flex; }
+      #settings .box { width: 340px; padding: 18px 22px; border-radius: 12px; background: rgba(10,12,20,0.94); border: 1px solid rgba(255,176,112,0.5);
+        color: #e8e6df; font: 14px/1.6 system-ui, "Malgun Gothic", sans-serif; }
+      #settings .title { display: flex; justify-content: space-between; font-weight: 700; color: #ffb070; font-size: 16px; margin-bottom: 10px; }
+      #settings .close { cursor: pointer; color: rgba(232,230,223,0.7); }
+      #settings .row { display: grid; grid-template-columns: 76px 1fr 32px; gap: 10px; align-items: center; margin: 8px 0; }
+      #settings input[type=range] { width: 100%; accent-color: #ffb070; }
+      #settings input[type=checkbox] { justify-self: start; accent-color: #ffb070; width: 16px; height: 16px; }
+      #settings .val { text-align: right; font: 12px monospace; color: rgba(232,230,223,0.8); }
+      #settings .hint { margin-top: 12px; font-size: 11px; color: rgba(232,230,223,0.55); }
+      body.ingame #settingsBtn { display: none; }
+      #fade { position: fixed; inset: 0; z-index: 20; background: #000; opacity: 0; pointer-events: none; transition: opacity 0.35s ease; }
       #fade.on { opacity: 1; }
       #chatLog {
+        z-index: 10;
         position: fixed; right: 16px; bottom: 16px; width: 300px; max-height: 42vh;
         overflow-y: auto; padding: 10px 12px; border-radius: 10px;
         background: rgba(10, 12, 20, 0.72); border: 1px solid rgba(255,255,255,0.12);
@@ -36,7 +165,7 @@
       #chatLog.on { opacity: 1; }
       #chatLog .chatMsg { padding: 2px 0; }
       #chatLog .chatMsg b { color: #ffb070; margin-right: 4px; }
-      #chatLog .chatBadge { margin-right: 3px; }
+      #chatLog .chatBadge { margin-right: 4px; vertical-align: -3px; }
       #chatLog .chatEvent {
         background: rgba(255,176,112,0.18); border-radius: 6px;
         padding: 4px 6px; margin: 3px 0; font-weight: 600;
@@ -46,12 +175,25 @@
   <body>
     <div id="hud">
       <div><b>노미요</b>(여우) 이동 <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / 방향키 · 달리기 <kbd>Shift</kbd></div>
-      <div>의자 앉기/일어나기 <kbd>Space</kbd> · 문으로 걸어가면 밖으로 나감</div>
-      <div>데스크 근처에서 방송 시작/종료 <kbd>C</kbd></div>
-      <div>노미요 표정 <kbd>F</kbd> · <b>파닥이</b>(병아리) 표정 <kbd>E</kbd> · 공포 모드 <kbd>H</kbd></div>
-      <div>카메라: 마우스 드래그 회전 · 휠 줌</div>
+      <div>상호작용 <kbd>E</kbd> — 데스크: 방송 · 침대: 잠자기(하루 넘김) · 파닥이: 말 걸기 · 숲의 물건 조사 · 문으로 걸어가면 밖으로 나감</div>
+      <div>게임 중: 방향키 이동 · <kbd>E</kbd> 조사/대화 · <kbd>Esc</kbd> 접속 종료</div>
+      <div>노미요 표정 <kbd>F</kbd> · <b>파닥이</b>(병아리) 표정 <kbd>G</kbd> · 공포 모드 <kbd>H</kbd></div>
+      <div>카메라: 마우스 드래그 회전 · 휠 줌 · 설정(음량) <kbd>O</kbd> · 음소거 <kbd>M</kbd></div>
     </div>
     <div id="mode">HOME</div>
+    <div id="day">DAY 1</div>
+    <div id="scareFlash"></div>
+    <div id="dayCard">DAY 2</div>
+    <div id="glitch"></div>
+    <div id="sysWarn"><div class="sysBar">⚠ SYSTEM</div><div class="sysBody">그걸 부수면 넌 혼자가 될거야.<br>부수지마.</div></div>
+    <div id="choice">
+      <div class="q">석상을 어떻게 할까?</div>
+      <div class="btns">
+        <div class="btn break" data-choice="release"><kbd>1</kbd><div class="ico">⛏️</div><div class="ttl">부순다</div><div class="sub">파닥이들을 돌려보낸다 — 나는 혼자가 된다</div></div>
+        <div class="btn keep" data-choice="keep"><kbd>2</kbd><div class="ico">🤍</div><div class="ttl">부수지 않는다</div><div class="sub">파닥이들과 함께 남는다</div></div>
+      </div>
+    </div>
+    <div id="ending"><div><div class="endTitle"></div><div class="endBody"></div><div class="endHint">R · 처음부터</div></div></div>
     <div id="fade"></div>
     <script type="module" src="/src/main.js"></script>
   </body>

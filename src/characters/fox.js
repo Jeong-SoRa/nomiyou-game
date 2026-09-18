@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { toon, mesh, sphere, capsule, eyeArc, outline, zigzagTexture, Blinker } from '../helpers.js';
-import { speechBubbleTexture } from '../world/textures.js';
+import { createSpeechBubble } from './speech.js';
 
 /**
  * 노미요 (Nomiyo) - 만화 속 치비 여우.
@@ -74,6 +74,25 @@ export function createFox() {
     body.add(arm);
     arms.push(arm);
   }
+
+  // 곡괭이 (숲의 상자를 부술 때만 왼손에 쥠, 평소엔 숨김)
+  const pickaxe = new THREE.Group();
+  const paHandle = mesh(new THREE.CylinderGeometry(0.045, 0.05, 0.85, 8), toon(0x8a6a3c));
+  paHandle.position.y = -0.42;
+  outline(paHandle, 0.015, LINE);
+  const paHead = mesh(new THREE.BoxGeometry(0.5, 0.075, 0.075), toon(0x4c4f58));
+  paHead.position.y = -0.84;
+  const paTip = mesh(new THREE.ConeGeometry(0.045, 0.16, 8), toon(0x4c4f58));
+  paTip.rotation.z = -Math.PI / 2;
+  paTip.position.set(0.33, -0.84, 0);
+  const paTip2 = mesh(new THREE.ConeGeometry(0.045, 0.16, 8), toon(0x4c4f58));
+  paTip2.rotation.z = Math.PI / 2;
+  paTip2.position.set(-0.33, -0.84, 0);
+  pickaxe.add(paHandle, paHead, paTip, paTip2);
+  pickaxe.position.set(0, -0.56, 0.06);
+  pickaxe.rotation.z = 0.12;
+  pickaxe.visible = false;
+  arms[0].add(pickaxe);
 
   // 스마트폰 (오른손)
   const phone = new THREE.Group();
@@ -220,23 +239,8 @@ export function createFox() {
   }
 
   // 머리 위 말풍선 (구독 리액션 등에 사용)
-  const speechSprite = new THREE.Sprite(
-    new THREE.SpriteMaterial({ transparent: true, opacity: 0, depthTest: false })
-  );
-  speechSprite.scale.set(1.6, 0.8, 1);
-  speechSprite.position.set(0, HEAD_Y + 1.6, 0);
-  speechSprite.visible = false;
-  root.add(speechSprite);
-  let speechTimer = 0;
-  let speechDuration = 1;
-
-  function say(text, duration = 1.8) {
-    if (speechSprite.material.map) speechSprite.material.map.dispose();
-    speechSprite.material.map = speechBubbleTexture(text);
-    speechSprite.visible = true;
-    speechTimer = duration;
-    speechDuration = duration;
-  }
+  const speech = createSpeechBubble(root, HEAD_Y + 1.15);
+  const say = speech.say;
 
   // ---------- 애니메이션 ----------
   const blinker = new Blinker(dotEyes);
@@ -253,6 +257,23 @@ export function createFox() {
   }
 
   let sitBlend = 0;
+  // 곡괭이질: chop() 을 부르면 0.38 배 지점까지 팔을 크게 들어올렸다가(windup) 나머지 구간에서 빠르게 내리찍는다(strike)
+  let chopT = 0;
+  let chopDur = 0.48;
+  function chop(duration = 0.48) {
+    chopDur = duration;
+    chopT = duration;
+  }
+  function setTool(show) {
+    pickaxe.visible = show;
+    if (!show) chopT = 0;
+  }
+  // 디버그 전용: 곡괭이질 포즈를 진행도(k, 0~1)에 고정해 스크린샷으로 확인할 수 있게 한다 (헤드리스 테스트에서 실시간 스윙은 타이밍상 포착하기 어려움)
+  let frozenChopK = null;
+  function previewChop(k) {
+    frozenChopK = k;
+    pickaxe.visible = true;
+  }
 
   function update(dt, { moving = false, speed = 1, sitting = false } = {}) {
     time += dt;
@@ -264,17 +285,39 @@ export function createFox() {
     const bounce = Math.abs(Math.sin(phase)) * 0.09 * moveBlend;
     const breathe = Math.sin(time * 2.2) * 0.012;
 
+    // 곡괭이질 진행도: 0~0.38 은 팔을 들어올리는 준비 동작, 0.38~1 은 내리찍는 타격
+    let chopWind = 0;
+    let chopStrike = 0;
+    if (frozenChopK !== null) {
+      const k = frozenChopK;
+      chopWind = 1 - (1 - Math.min(1, k / 0.38)) ** 3;
+      chopStrike = k <= 0.38 ? 0 : Math.min(1, (k - 0.38) / 0.62);
+      chopStrike *= chopStrike;
+    } else if (chopT > 0) {
+      chopT = Math.max(0, chopT - dt);
+      const k = 1 - chopT / chopDur;
+      chopWind = 1 - (1 - Math.min(1, k / 0.38)) ** 3;
+      chopStrike = k <= 0.38 ? 0 : Math.min(1, (k - 0.38) / 0.62);
+      chopStrike *= chopStrike;
+    }
+
     body.position.y = BODY_Y + bounce;
     body.scale.y = 1 + breathe;
     body.rotation.z = Math.sin(phase) * 0.05 * moveBlend;
-    body.rotation.x = 0.08 * moveBlend - 0.05 * sitBlend;
+    body.rotation.x = 0.08 * moveBlend - 0.05 * sitBlend + chopStrike * 0.18;
 
     // 앉으면 다리를 앞으로 쭉 뻗음
     legs[0].rotation.x = THREE.MathUtils.lerp(swing * 0.7, -1.45, sitBlend);
     legs[1].rotation.x = THREE.MathUtils.lerp(-swing * 0.7, -1.45, sitBlend);
 
-    // 왼팔은 걷기 스윙, 오른팔은 폰 들기 자세와 스윙을 섞음
-    arms[0].rotation.x = -swing * 0.6;
+    // 왼팔은 평소 걷기 스윙, 곡괭이질 중에는 들어올렸다가 내리찍는 동작으로 대체 (기본 벌어짐 각도 -0.25 유지)
+    if (frozenChopK !== null || chopT > 0 || chopWind > 0 || chopStrike > 0) {
+      arms[0].rotation.x = THREE.MathUtils.lerp(0, 2.1, chopWind) - chopStrike * 3.5;
+      arms[0].rotation.z = -0.25 + chopWind * 0.4 - chopStrike * 0.3;
+    } else {
+      arms[0].rotation.x = -swing * 0.6;
+      arms[0].rotation.z = -0.25;
+    }
     const holdPose = -1.35 + Math.sin(time * 1.6) * 0.05;
     arms[1].rotation.x = THREE.MathUtils.lerp(holdPose, swing * 0.6 - 0.6, moveBlend);
     arms[1].rotation.z = THREE.MathUtils.lerp(-0.35, 0.25, moveBlend);
@@ -297,14 +340,8 @@ export function createFox() {
 
     if (expression === 'dot') blinker.update(dt);
 
-    if (speechTimer > 0) {
-      speechTimer -= dt;
-      const fadeOut = Math.min(speechDuration, 0.3);
-      speechSprite.material.opacity =
-        speechTimer > fadeOut ? Math.min(1, (speechDuration - speechTimer) / 0.2) : speechTimer / fadeOut;
-      if (speechTimer <= 0) speechSprite.visible = false;
-    }
+    speech.update(dt);
   }
 
-  return { group: root, update, setExpression, getExpression: () => expression, say };
+  return { group: root, update, setExpression, getExpression: () => expression, say, chop, setTool, previewChop };
 }

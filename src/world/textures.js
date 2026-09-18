@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { rand } from '../helpers.js';
 
 /** 캔버스 기반 텍스처 생성 헬퍼 (방 소품용) */
 
@@ -245,27 +246,139 @@ export function screenTexture(mode = 'off') {
 }
 
 /** 머리 위 말풍선 텍스트 */
-export function speechBubbleTexture(text) {
-  const [c, ctx] = makeCanvas(256, 128);
-  ctx.fillStyle = '#fffdf7';
-  ctx.strokeStyle = '#2a211d';
-  ctx.lineWidth = 6;
+/**
+ * 말풍선 텍스처. 긴 문장은 자동 줄바꿈되고 캔버스 높이가 줄 수에 맞춰 늘어난다.
+ * 반환 텍스처의 userData.size = [w, h] (픽셀) — 스프라이트 비율 계산용.
+ * scare: 점프스케어용 (크고 붉은 글자, 흔들린 글자 배치)
+ */
+export function speechBubbleTexture(text, { scare = false } = {}) {
+  const W = 512;
+  const font = scare ? 'bold 58px "Malgun Gothic", sans-serif' : 'bold 34px "Malgun Gothic", sans-serif';
+  const lineH = scare ? 66 : 42;
+  const padX = 28;
+  const padY = 20;
+  const tailH = 26;
+  const [measure, mctx] = makeCanvas(8, 8);
+  mctx.font = font;
+  const lines = wrapText(mctx, text, W - padX * 2);
+  const H = padY * 2 + lineH * lines.length + tailH + 8;
+  const [c, ctx] = makeCanvas(W, H);
+  ctx.fillStyle = scare ? '#1a0507' : '#fffdf7';
+  ctx.strokeStyle = scare ? '#c8102e' : '#2a211d';
+  ctx.lineWidth = scare ? 8 : 6;
   ctx.beginPath();
-  ctx.roundRect(8, 8, 240, 88, 30);
+  ctx.roundRect(8, 8, W - 16, H - tailH - 16, 26);
   ctx.fill();
   ctx.stroke();
+  // 말꼬리 (아래 가운데)
+  const ty = H - tailH - 8;
   ctx.beginPath();
-  ctx.moveTo(60, 96);
-  ctx.lineTo(48, 120);
-  ctx.lineTo(84, 98);
+  ctx.moveTo(W / 2 - 18, ty);
+  ctx.lineTo(W / 2 - 4, ty + tailH);
+  ctx.lineTo(W / 2 + 22, ty + 2);
   ctx.closePath();
-  ctx.fillStyle = '#fffdf7';
   ctx.fill();
   ctx.stroke();
-  ctx.fillStyle = '#2a211d';
-  ctx.font = 'bold 32px "Malgun Gothic", sans-serif';
+  ctx.fillStyle = scare ? '#ff2a3c' : '#2a211d';
+  ctx.font = font;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(text, 128, 50);
+  lines.forEach((line, i) => {
+    const y = padY + 8 + lineH * (i + 0.5);
+    if (scare) {
+      // 글자를 하나씩 삐뚤빼뚤 찍어서 떨리는 느낌
+      ctx.textAlign = 'left';
+      const total = ctx.measureText(line).width;
+      let x = W / 2 - total / 2;
+      for (const ch of line) {
+        ctx.fillText(ch, x + rand(-3, 3), y + rand(-6, 6));
+        x += ctx.measureText(ch).width;
+      }
+      ctx.textAlign = 'center';
+    } else {
+      ctx.fillText(line, W / 2, y);
+    }
+  });
+  const tex = finish(c);
+  tex.userData.size = [W, H];
+  return tex;
+}
+
+function wrapText(ctx, text, maxWidth) {
+  const lines = [];
+  for (const para of text.split('\n')) {
+    let line = '';
+    for (const word of para.split(' ')) {
+      const test = line ? line + ' ' + word : word;
+      if (ctx.measureText(test).width <= maxWidth || !line) line = test;
+      else {
+        lines.push(line);
+        line = word;
+      }
+    }
+    // 띄어쓰기 없는 긴 단어는 글자 단위로 자름
+    while (ctx.measureText(line).width > maxWidth) {
+      let cut = line.length;
+      while (cut > 1 && ctx.measureText(line.slice(0, cut)).width > maxWidth) cut--;
+      lines.push(line.slice(0, cut));
+      line = line.slice(cut);
+    }
+    lines.push(line);
+  }
+  return lines;
+}
+
+/** 창밖 밤하늘 (위는 짙은 남색, 지평선 쪽은 살짝 밝게) + 달 */
+export function nightSkyTexture() {
+  const [c, ctx] = makeCanvas(512, 512);
+  const g = ctx.createLinearGradient(0, 0, 0, 512);
+  g.addColorStop(0, '#070a14');
+  g.addColorStop(0.7, '#111a30');
+  g.addColorStop(1, '#1a2540');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 512, 512);
+  ctx.fillStyle = '#e9eeff';
+  ctx.beginPath();
+  ctx.arc(150, 120, 34, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#d9dff2';
+  ctx.beginPath();
+  ctx.arc(160, 110, 9, 0, Math.PI * 2);
+  ctx.arc(140, 132, 6, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#ffffff';
+  for (let i = 0; i < 40; i++) {
+    ctx.globalAlpha = rand(0.3, 0.9);
+    ctx.fillRect(rand(0, 512), rand(0, 300), 2, 2);
+  }
+  ctx.globalAlpha = 1;
+  return finish(c);
+}
+
+/** 창밖 아침 하늘 (위는 하늘색, 지평선 쪽은 연한 살구빛) + 해 + 구름 */
+export function morningSkyTexture() {
+  const [c, ctx] = makeCanvas(512, 512);
+  const g = ctx.createLinearGradient(0, 0, 0, 512);
+  g.addColorStop(0, '#6fb6e6');
+  g.addColorStop(0.6, '#a8d8f0');
+  g.addColorStop(1, '#f2e6c8');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 512, 512);
+  ctx.fillStyle = '#fff4c2';
+  ctx.beginPath();
+  ctx.arc(390, 110, 40, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = 'rgba(255, 244, 194, 0.35)';
+  ctx.beginPath();
+  ctx.arc(390, 110, 62, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.9)';
+  for (const [x, y, w] of [[90, 170, 70], [210, 120, 55], [300, 220, 80], [130, 260, 45]]) {
+    for (let i = 0; i < 4; i++) {
+      ctx.beginPath();
+      ctx.arc(x + i * w * 0.32, y + Math.sin(i * 1.7) * w * 0.12, w * (0.3 + (i % 2) * 0.12), 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
   return finish(c);
 }

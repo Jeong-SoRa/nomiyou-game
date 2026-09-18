@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { createSpeechBubble } from './speech.js';
 import { toon, mesh, sphere, capsule, eyeArc, outline, Blinker } from '../helpers.js';
 
 /**
@@ -167,7 +168,11 @@ export function createChick({ scale = 1 } = {}) {
   }
   setExpression(expression);
 
+  // 머리(대파) 위 말풍선. root 가 작게 scale 되므로 픽셀 배율을 그만큼 키움
+  const speech = createSpeechBubble(root, BODY_Y + R + 1.25, { unitsPerPixel: 1 / (200 * scale) });
+
   function update(dt, { moving = false, speed = 1 } = {}) {
+    speech.update(dt);
     time += dt;
     moveBlend = THREE.MathUtils.damp(moveBlend, moving ? 1 : 0, 8, dt);
     if (moving) phase += dt * 11 * speed;
@@ -201,5 +206,5 @@ export function createChick({ scale = 1 } = {}) {
     if (expression === 'dot' || expression === 'wink') blinker.update(dt);
   }
 
-  return { group: root, update, setExpression, getExpression: () => expression };
+  return { group: root, update, setExpression, getExpression: () => expression, say: speech.say, isTalking: speech.isTalking };
 }

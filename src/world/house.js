@@ -9,6 +9,8 @@ import {
   clockFaceTexture,
   chatSignTexture,
   screenTexture,
+  nightSkyTexture,
+  morningSkyTexture,
 } from './textures.js';
 
 /**
@@ -48,9 +50,11 @@ export function createHouse() {
   const rbox = (w, h, d, mat, r = 0.08) => mesh(new RoundedBoxGeometry(w, h, d, 3, r), mat);
 
   // ---------- 방 껍데기 (안쪽 면만 그려서 카메라가 밖에 있어도 내부가 보임) ----------
+  // 앞벽(+z, 카메라 쪽)은 창문 구멍을 내야 하므로 껍데기에서 빼고 아래에서 판 4장으로 따로 만든다
+  const mHidden = new THREE.MeshBasicMaterial({ visible: false });
   const shell = new THREE.Mesh(
     new THREE.BoxGeometry(W, H, D),
-    [mWall, mWall, toon(0xfff8ee), mWood, mWall, mWall].map((m) => {
+    [mWall, mWall, toon(0xfff8ee), mWood, mHidden, mWall].map((m) => {
       const c = m.clone();
       c.side = THREE.BackSide;
       return c;
@@ -59,6 +63,143 @@ export function createHouse() {
   shell.position.y = H / 2;
   shell.receiveShadow = true;
   group.add(shell);
+
+  // ---------- 창문 (앞벽 +z) — 숲이 내다보임 ----------
+  // 창밖 풍경은 스텐실로 "창 구멍을 통해서만" 그려진다. 카메라가 방 밖(앞벽 뒤)으로 나가도
+  // 풍경 상자가 화면을 덮지 않고, 창 밖으로만 보인다.
+  const WIN = { x: 1.5, y: 4.4, w: 3.6, h: 2.6 };
+  const wallZ = D / 2;
+  const wallPanel = (w, h, x, y) => {
+    const m = mesh(new THREE.PlaneGeometry(w, h), mWall);
+    m.position.set(x, y, wallZ);
+    m.rotation.y = Math.PI; // 방 안쪽(-z)을 향함
+    m.receiveShadow = true;
+    group.add(m);
+  };
+  const winL = WIN.x - WIN.w / 2;
+  const winR = WIN.x + WIN.w / 2;
+  const winB = WIN.y - WIN.h / 2;
+  const winT = WIN.y + WIN.h / 2;
+  wallPanel(winL + W / 2, H, (-W / 2 + winL) / 2, H / 2);
+  wallPanel(W / 2 - winR, H, (winR + W / 2) / 2, H / 2);
+  wallPanel(WIN.w, winB, WIN.x, winB / 2);
+  wallPanel(WIN.w, H - winT, WIN.x, (winT + H) / 2);
+
+  // 창틀 + 창살 + 창턱
+  const mFrame = toon(0xfbf6ec);
+  const FR = 0.16;
+  const frameBar = (w, h, x, y, z = wallZ - 0.06, d = 0.28) => {
+    const b = rbox(w, h, d, mFrame, 0.03);
+    b.position.set(x, y, z);
+    outline(b, 0.02, LINE);
+    group.add(b);
+  };
+  frameBar(WIN.w + FR * 2, FR, WIN.x, winT + FR / 2);
+  frameBar(WIN.w + FR * 2, FR, WIN.x, winB - FR / 2);
+  frameBar(FR, WIN.h, winL - FR / 2, WIN.y);
+  frameBar(FR, WIN.h, winR + FR / 2, WIN.y);
+  frameBar(0.08, WIN.h, WIN.x, WIN.y, wallZ - 0.02, 0.1);
+  frameBar(WIN.w, 0.08, WIN.x, WIN.y, wallZ - 0.02, 0.1);
+  const sill = rbox(WIN.w + 0.7, 0.12, 0.55, mFrame, 0.03);
+  sill.position.set(WIN.x, winB - FR - 0.06, wallZ - 0.22);
+  outline(sill, 0.02, LINE);
+  group.add(sill);
+
+  // 포털: 창 구멍 자리에 색은 안 그리고 스텐실만 1로 찍는 판 (방 안쪽에서만 보임)
+  const portal = new THREE.Mesh(
+    new THREE.PlaneGeometry(WIN.w, WIN.h),
+    new THREE.MeshBasicMaterial({
+      colorWrite: false,
+      depthWrite: false,
+      stencilWrite: true,
+      stencilRef: 1,
+      stencilFunc: THREE.AlwaysStencilFunc,
+      stencilZPass: THREE.ReplaceStencilOp,
+    })
+  );
+  portal.position.set(WIN.x, WIN.y, wallZ);
+  portal.rotation.y = Math.PI;
+  portal.renderOrder = -1;
+  group.add(portal);
+  // 유리 (살짝 푸른 반투명)
+  const glass = new THREE.Mesh(
+    new THREE.PlaneGeometry(WIN.w, WIN.h),
+    new THREE.MeshBasicMaterial({ color: 0x9fc0ff, transparent: true, opacity: 0.1, depthWrite: false })
+  );
+  glass.position.set(WIN.x, WIN.y, wallZ - 0.01);
+  glass.rotation.y = Math.PI;
+  group.add(glass);
+
+  // 창밖 풍경: 벽 뒤 작은 디오라마 (조명을 안 받는 Basic 재질로 밤 실루엣만, 스텐실 1인 곳에만 그림)
+  const outside = new THREE.Group();
+  outside.name = 'window-view';
+  group.add(outside);
+  const outsideMat = (opts) =>
+    new THREE.MeshBasicMaterial({ ...opts, stencilWrite: true, stencilRef: 1, stencilFunc: THREE.EqualStencilFunc });
+  const outsideMesh = (geo, mat) => {
+    const m = new THREE.Mesh(geo, mat);
+    m.renderOrder = 1;
+    outside.add(m);
+    return m;
+  };
+  const OUT = { w: 16, h: 14, d: 11 };
+  // 창밖은 숲의 시간대(daylight)를 따라 밤↔아침으로 바뀐다: 색은 보간, 하늘은 아침 그림을 위에 겹쳐 투명도로 섞음
+  const outDayNight = [];
+  const outShade = (mat, night, day) => {
+    outDayNight.push({ mat, night: new THREE.Color(night), day: new THREE.Color(day) });
+    return mat;
+  };
+  const outBox = outsideMesh(
+    new THREE.BoxGeometry(OUT.w, OUT.h, OUT.d),
+    outShade(outsideMat({ color: 0x070a14, side: THREE.BackSide }), 0x070a14, 0x9fd0ea)
+  );
+  outBox.position.set(WIN.x, OUT.h / 2 - 1, wallZ + OUT.d / 2);
+  const sky = outsideMesh(new THREE.PlaneGeometry(OUT.w - 0.2, OUT.h - 0.2), outsideMat({ map: nightSkyTexture() }));
+  sky.position.set(WIN.x, OUT.h / 2 - 1, wallZ + OUT.d - 0.15);
+  sky.rotation.y = Math.PI;
+  const skyDay = outsideMesh(
+    new THREE.PlaneGeometry(OUT.w - 0.2, OUT.h - 0.2),
+    outsideMat({ map: morningSkyTexture(), transparent: true, opacity: 0, depthWrite: false })
+  );
+  skyDay.position.set(WIN.x, OUT.h / 2 - 1, wallZ + OUT.d - 0.2);
+  skyDay.rotation.y = Math.PI;
+  skyDay.renderOrder = 2;
+  const ground = outsideMesh(
+    new THREE.PlaneGeometry(OUT.w - 0.2, OUT.d - 0.2),
+    outShade(outsideMat({ color: 0x0b1410 }), 0x0b1410, 0x5f9a4a)
+  );
+  ground.rotation.x = -Math.PI / 2;
+  ground.position.set(WIN.x, -0.9, wallZ + OUT.d / 2);
+  const skyCol = new THREE.Color(0x111a30);
+  const nearCol = new THREE.Color(0x0e1c14);
+  const trunkCol = new THREE.Color(0x120d0a);
+  const daySkyCol = new THREE.Color(0xa8d8f0);
+  const dayNearCol = new THREE.Color(0x3f9a4c);
+  const dayTrunkCol = new THREE.Color(0x6b4a30);
+  for (let i = 0; i < 26; i++) {
+    const depth = rand(0.1, 1); // 0 = 창 바로 앞, 1 = 멀리
+    const z = wallZ + 1.2 + depth * (OUT.d - 2.5);
+    const x = WIN.x + rand(-OUT.w / 2 + 1, OUT.w / 2 - 1);
+    if (depth < 0.35 && Math.abs(x - WIN.x) < 1.6) continue; // 창 정면은 비워 멀리까지 보이게
+    const h = rand(4, 8) * (1 - depth * 0.35);
+    const r = rand(1.0, 1.9) * (1 - depth * 0.3);
+    const col = nearCol.clone().lerp(skyCol, depth * 0.75);
+    const trunk = outsideMesh(
+      new THREE.CylinderGeometry(0.16, 0.24, 1.6, 8),
+      outShade(
+        outsideMat({ color: trunkCol.clone().lerp(skyCol, depth * 0.6) }),
+        trunkCol.clone().lerp(skyCol, depth * 0.6),
+        dayTrunkCol.clone().lerp(daySkyCol, depth * 0.5)
+      )
+    );
+    trunk.position.set(x, -0.9 + 0.8, z);
+    const top = outsideMesh(
+      new THREE.ConeGeometry(r, h, 9),
+      outShade(outsideMat({ color: col }), col, dayNearCol.clone().lerp(daySkyCol, depth * 0.55))
+    );
+    top.position.set(x, -0.9 + 1.4 + h / 2, z);
+    top.rotation.y = rand(0, Math.PI * 2);
+  }
 
   const mBase = toon(0xe7d3b8);
   const baseboard = (len, x, z, ry) => {
@@ -265,8 +406,8 @@ export function createHouse() {
   }
   bed.add(pad);
   // 침대 옆 둥근 러그
-  const rug = mesh(new THREE.CylinderGeometry(1.6, 1.6, 0.04, 40), toon(0xf2d3b5));
-  rug.position.set(5.6, 0.02, -1.4);
+  const rug = mesh(new THREE.CylinderGeometry(5, 5, 0.04, 40), toon(0xf2d3b5));
+  rug.position.set(2, 0.02, 0.8);
   outline(rug, 0.02, 0xe0b98f);
   group.add(rug);
 
@@ -339,10 +480,17 @@ export function createHouse() {
   minPivot.add(minHand);
   clock.add(clockBody, clockFace, hourPivot, minPivot);
 
-  // 선반 + 화분
-  const shelf = mesh(new THREE.BoxGeometry(2.4, 0.14, 1.0), mDeskWood);
-  shelf.position.set(W / 2 - 1.2, 4.1, 1.5);
+  // 선반 + 화분: 앞벽(+z) 창문 오른쪽 옆. 선반은 앞벽에 붙이고, 큰 화분은 그 아래 바닥에
+  const FRONT_Z = D / 2;
+  const SHELF = { x: WIN.x + WIN.w / 2 + 2.4, y: 4.6, z: FRONT_Z - 0.5, len: 2.4, depth: 1.0 };
+  const shelf = mesh(new THREE.BoxGeometry(SHELF.len, 0.14, SHELF.depth), mDeskWood);
+  shelf.position.set(SHELF.x, SHELF.y, SHELF.z);
   group.add(shelf);
+  for (const dx of [-0.9, 0.9]) {
+    const bracket = mesh(new THREE.BoxGeometry(0.12, 0.5, 0.12), toon(0xb9854f));
+    bracket.position.set(SHELF.x + dx, SHELF.y - 0.32, FRONT_Z - 0.12);
+    group.add(bracket);
+  }
   const plant = (x, y, z, scale) => {
     const g = new THREE.Group();
     g.position.set(x, y, z);
@@ -369,10 +517,10 @@ export function createHouse() {
     }
     group.add(g);
   };
-  plant(-W / 2 + 1.4, 0, -3.2, 1.6);
-  plant(W / 2 - 1.2, 4.17, 1.5, 0.9);
+  plant(SHELF.x, 0, FRONT_Z - 1.4, 1.6);
+  plant(SHELF.x, SHELF.y + 0.07, SHELF.z, 0.9);
 
-  // 파란 쿠션 (화분 옆 바닥)
+  // 파란 쿠션 (왼쪽 벽 앞 바닥)
   const cushion = rbox(2.4, 0.6, 2.0, toon(0x7ea6e6), 0.28);
   cushion.position.set(-W / 2 + 1.6, 0.3, -0.4);
   outline(cushion, 0.035, LINE);
@@ -396,7 +544,7 @@ export function createHouse() {
   const obstacles = [
     { minX: DESK.x - DESK.w / 2 - 0.2, maxX: DESK.x + DESK.w / 2 + 0.2, minZ: -D / 2, maxZ: DESK.z + DESK.d / 2 + 0.1 },
     { minX: BED.x - BED.w / 2 - 0.1, maxX: W / 2, minZ: -D / 2, maxZ: BED.z + BED.l / 2 + 0.1 },
-    { minX: -W / 2, maxX: -W / 2 + 2.7, minZ: -4.5, maxZ: -1.9 }, // 큰 화분
+    { minX: SHELF.x - 1.4, maxX: SHELF.x + 1.4, minZ: FRONT_Z - 2.7, maxZ: FRONT_Z }, // 큰 화분 (창문 옆)
     { minX: CHAIR.x - 0.9, maxX: CHAIR.x + 0.9, minZ: CHAIR.z - 0.8, maxZ: CHAIR.z + 0.9 },
   ];
 
@@ -407,10 +555,19 @@ export function createHouse() {
 
   let noiseTimer = 0;
   let streamTimer = 0;
-  function update(dt, t, horrorBlend, streaming = false) {
+  const RED_TINT = new THREE.Color(0xff5a48);
+  function update(dt, t, horrorBlend, streaming = false, daylight = 0) {
+    // 창밖 디오라마: 숲과 같은 시간대 (으스스함이 있으면 그만큼 밤에 가깝게)
+    const dayOut = THREE.MathUtils.clamp(daylight * (1 - horrorBlend), 0, 1);
+    for (const m of outDayNight) m.mat.color.copy(m.night).lerp(m.day, dayOut);
+    skyDay.material.opacity = dayOut;
     hemi.intensity = THREE.MathUtils.lerp(0.9, 0.08, horrorBlend);
     sun.intensity = THREE.MathUtils.lerp(1.7, 0.1, horrorBlend);
     lamp.intensity = THREE.MathUtils.lerp(6, 0.6, horrorBlend);
+    // 날짜가 지나며 방이 붉고 어둡게 물듦
+    sun.color.setHex(0xffe2bf).lerp(RED_TINT, horrorBlend * 0.7);
+    lamp.color.setHex(0xffd9a8).lerp(RED_TINT, horrorBlend * 0.8);
+    hemi.color.setHex(0xfff3e2).lerp(RED_TINT, horrorBlend * 0.5);
     const on = horrorBlend > 0.4;
     screen.material = on ? screenMatOn : streaming ? screenMatStream : screenMatOff;
     if (on) {
@@ -458,17 +615,25 @@ export function createHouse() {
     // 문: 이 지점 근처에 가면 다른 월드로 이동. doorSpawn 은 이 월드로 들어올 때 서는 위치
     door: { position: new THREE.Vector3(-W / 2 + 1.5, 0, DOOR.z), radius: 1.5, target: 'forest' },
     doorSpawn: { position: new THREE.Vector3(-W / 2 + 3.6, 0, DOOR.z), heading: Math.PI / 2, camera: { back: 3.6, height: 6.2 } },
-    // 의자: 근처에서 Space 를 누르면 앉음
+    // 의자: 데스크 상호작용(E) 시 앉는 위치
     seat: {
-      position: new THREE.Vector3(CHAIR.x, CHAIR.seatY, CHAIR.z + 0.05),
+      // 여우 루트를 좌석면보다 낮춰서 몸통 아랫면이 쿠션에 닿게 (몸통 아래가 루트 +0.31, 앉으면 다리를 앞으로 뻗음)
+      position: new THREE.Vector3(CHAIR.x, CHAIR.seatY - 0.45, CHAIR.z + 0.05),
       heading: Math.PI, // 모니터(-z)를 향함
       approach: new THREE.Vector3(CHAIR.x, 0, CHAIR.z + 1.9),
       radius: 2.6,
     },
-    // 컴퓨터: 근처에서 C 를 누르면 방송 시작/종료 (의자 근접 존을 그대로 사용)
+    // 컴퓨터: 근처에서 E 를 누르면 자리에 앉아 게임 접속(방송 시작). prompt 는 "E" 안내가 뜨는 위치
     computer: {
       approach: new THREE.Vector3(CHAIR.x, 0, CHAIR.z + 1.9),
       radius: 2.6,
+      prompt: new THREE.Vector3(CHAIR.x, 2.7, CHAIR.z + 0.3),
+    },
+    // 침대: 옆에서 E 를 누르면 잠자기 (하루가 지남). 할 일이 남았으면 안내만
+    bed: {
+      approach: new THREE.Vector3(BED.x - BED.w / 2 - 1.1, 0, BED.z + 0.8),
+      radius: 2.4,
+      prompt: new THREE.Vector3(BED.x - 0.6, 2.6, BED.z),
     },
   };
 }

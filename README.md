@@ -39,3 +39,6 @@ npm run dev
 ## 디버그 URL 파라미터
 
 `?world=forest`, `?horror=1`, `?sit=1`, `?stream=1`, `?at=x,z`, `?keys=KeyW,ShiftLeft`, `?yaw=&dist=&height=`, `?steps=N`, `?trace=1`
+
+### 마지막날 엔딩 테스트
+http://localhost:5173/?day=7&world=forest&companion=1&done=recruit&pickaxe=1&smash=1

@@ -54,5 +54,5 @@ export function createStreamSim({ onMessage, onSubscribe }) {
     }
   }
 
-  return { update, reset };
+  return { update, reset, randomViewer: () => (subscribedNames.length && Math.random() < 0.4 ? pick(subscribedNames) : pick(VIEWER_NAMES)) };
 }
