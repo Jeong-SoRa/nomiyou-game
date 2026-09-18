@@ -7,7 +7,8 @@ export function createChatLog({ maxMessages = 40 } = {}) {
   function addMessage({ name, text, subscriber = false, isEvent = false }) {
     const row = document.createElement('div');
     row.className = 'chatMsg' + (isEvent ? ' chatEvent' : '');
-    row.innerHTML = `${subscriber ? '<span class="chatBadge">🐤</span>' : ''}<b>${escapeHtml(name)}</b> ${escapeHtml(text)}`;
+    // 이벤트 라인(구독 알림 등)은 본문에 이미 이름이 포함되므로 이름을 따로 표시하지 않음
+    row.innerHTML = `${subscriber ? '<span class="chatBadge">🐤</span>' : ''}${isEvent ? '' : `<b>${escapeHtml(name)}</b> `}${escapeHtml(text)}`;
     el.appendChild(row);
     while (el.children.length > maxMessages) el.removeChild(el.firstChild);
     el.scrollTop = el.scrollHeight;

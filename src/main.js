@@ -5,8 +5,10 @@ import { createChick } from './characters/chick.js';
 import { createHouse } from './world/house.js';
 import { createForest } from './world/forest.js';
 import { lerpAngle, rand } from './helpers.js';
+import { createChatLog } from './ui/chatLog.js';
+import { createStreamSim } from './systems/streamSim.js';
 
-// 디버그용 URL 파라미터: ?world=forest, ?keys=KeyW,ShiftLeft, ?horror=1, ?sit=1, ?yaw=&dist=&height=
+// 디버그용 URL 파라미터: ?world=forest, ?keys=KeyW,ShiftLeft, ?horror=1, ?sit=1, ?stream=1, ?yaw=&dist=&height=
 const params = new URLSearchParams(location.search);
 
 // ---------- 렌더러 / 씬 / 카메라 ----------
@@ -40,6 +42,8 @@ const foxState = { heading: 0, velocity: new THREE.Vector3(), sitting: false };
 
 const chickScales = [0.6, 0.6, 0.56];
 let chicks = [];
+// 방송(구독 이벤트)으로 생성된 파닥이 — 월드 전환 후에도 유지되도록 별도 추적
+let sessionChicks = []; // [{ worldName, position: Vector3, scale }]
 
 // ---------- 월드 로딩 / 전환 ----------
 const worldFactories = { house: createHouse, forest: createForest };
@@ -80,6 +84,20 @@ function loadWorld(name, { viaDoor = false } = {}) {
       speed: rand(1.4, 2.0),
     };
   });
+  // 방송으로 생성된 파닥이 복원 (이 월드에 속한 것만)
+  for (const rec of sessionChicks.filter((r) => r.worldName === name)) {
+    const c = createChick({ scale: rec.scale });
+    c.group.position.copy(rec.position);
+    scene.add(c.group);
+    chicks.push({
+      char: c,
+      home: rec.position.clone(),
+      target: rec.position.clone(),
+      wait: rand(0.5, 2),
+      heading: rand(0, Math.PI * 2),
+      speed: rand(1.4, 2.0),
+    });
+  }
   for (const c of chicks) c.char.setExpression(horror ? 'stern' : 'dot');
 
   // 카메라를 여우 뒤쪽으로 재배치 (스폰 지점별로 거리/높이 지정 가능)
@@ -94,6 +112,7 @@ function loadWorld(name, { viaDoor = false } = {}) {
 let transitioning = false;
 function switchWorld(name) {
   if (transitioning) return;
+  if (streaming) stopStreaming();
   transitioning = true;
   fadeEl.classList.add('on');
   setTimeout(() => {
@@ -108,9 +127,10 @@ function switchWorld(name) {
 // ---------- 공포 모드 ----------
 let horror = false;
 let horrorBlend = 0;
+let streaming = false; // 방송 상태 (아래 방송 섹션에서 제어. setHorror 가 먼저 실행되므로 여기서 선언)
 function setHorror(on) {
   horror = on;
-  modeEl.textContent = on ? 'HORROR' : world?.group.name === 'house' ? 'HOME' : 'NIGHT';
+  modeEl.textContent = on ? 'HORROR' : streaming ? 'LIVE' : world?.group.name === 'house' ? 'HOME' : 'NIGHT';
   modeEl.classList.toggle('horror', on);
   for (const c of chicks) c.char.setExpression(on ? 'stern' : 'dot');
   if (!on) fox.setExpression('dot');
@@ -141,6 +161,7 @@ window.addEventListener('keydown', (e) => {
   }
   if (e.code === 'KeyH') setHorror(!horror);
   if (e.code === 'Space') toggleSit();
+  if (e.code === 'KeyC') (streaming ? stopStreaming : startStreaming)();
 });
 window.addEventListener('keyup', (e) => keys.delete(e.code));
 window.addEventListener('blur', () => {
@@ -150,6 +171,14 @@ window.addEventListener('blur', () => {
 for (const k of (params.get('keys') || '').split(',')) if (k) keys.add(k);
 
 // ---------- 앉기 ----------
+function sitDown() {
+  const seat = world.seat;
+  foxState.sitting = true;
+  foxState.velocity.set(0, 0, 0);
+  fox.group.position.copy(seat.position);
+  foxState.heading = seat.heading;
+  fox.group.rotation.y = seat.heading;
+}
 function toggleSit() {
   const seat = world.seat;
   if (!seat) return;
@@ -160,16 +189,73 @@ function toggleSit() {
   const dx = fox.group.position.x - seat.approach.x;
   const dz = fox.group.position.z - seat.approach.z;
   if (Math.sqrt(dx * dx + dz * dz) > seat.radius) return;
-  foxState.sitting = true;
-  foxState.velocity.set(0, 0, 0);
-  fox.group.position.copy(seat.position);
-  foxState.heading = seat.heading;
-  fox.group.rotation.y = seat.heading;
+  sitDown();
 }
 function standUp() {
   foxState.sitting = false;
   fox.group.position.copy(world.seat.approach);
   foxState.heading = 0;
+}
+
+// ---------- 방송 (데스크 앞에서 C) ----------
+const chatLog = createChatLog();
+const streamSim = createStreamSim({
+  onMessage: (m) => chatLog.addMessage(m),
+  onSubscribe: (m) => {
+    chatLog.addMessage(m);
+    reactSubscribe(m.name);
+  },
+});
+let reactExprTimeout = 0;
+
+function startStreaming() {
+  const c = world.computer;
+  if (!c || streaming || transitioning) return;
+  const d = Math.hypot(fox.group.position.x - c.approach.x, fox.group.position.z - c.approach.z);
+  if (d > c.radius) return;
+  if (!foxState.sitting && world.seat) sitDown();
+  streaming = true;
+  chatLog.clear();
+  chatLog.setVisible(true);
+  streamSim.reset();
+  if (!horror) modeEl.textContent = 'LIVE';
+}
+
+function stopStreaming() {
+  if (!streaming) return;
+  streaming = false;
+  chatLog.setVisible(false);
+  if (!horror) modeEl.textContent = world.group.name === 'house' ? 'HOME' : 'NIGHT';
+}
+
+function spawnChick(near) {
+  const pos = near.clone();
+  pos.x += rand(-1.6, 1.6);
+  pos.z += rand(0.4, 2.0); // 데스크 반대쪽(방 안쪽)으로
+  confine(pos, 0.6);
+  const c = createChick({ scale: rand(0.5, 0.6) });
+  c.group.position.copy(pos);
+  c.setExpression(horror ? 'stern' : 'dot');
+  scene.add(c.group);
+  chicks.push({
+    char: c,
+    home: pos.clone(),
+    target: pos.clone(),
+    wait: rand(0.5, 2),
+    heading: rand(0, Math.PI * 2),
+    speed: rand(1.4, 2.0),
+  });
+  sessionChicks.push({ worldName: world.group.name, position: pos.clone(), scale: c.group.scale.x });
+}
+
+function reactSubscribe() {
+  fox.say('감사합니다!');
+  if (!horror) fox.setExpression('happy');
+  clearTimeout(reactExprTimeout);
+  reactExprTimeout = setTimeout(() => {
+    if (!horror) fox.setExpression('dot');
+  }, 1600);
+  if (world.computer) spawnChick(world.computer.approach);
 }
 if (params.has('at')) {
   const [x, z] = params.get('at').split(',').map(Number);
@@ -179,6 +265,10 @@ if (params.has('at')) {
 if (params.has('sit') && world.seat) {
   fox.group.position.copy(world.seat.approach);
   toggleSit();
+}
+if (params.has('stream') && world.computer) {
+  fox.group.position.copy(world.computer.approach);
+  startStreaming();
 }
 
 // ---------- 충돌/경계 ----------
@@ -253,6 +343,13 @@ function updateFox(dt) {
     const d = Math.hypot(p.x - door.position.x, p.z - door.position.z);
     if (!doorArmed && d > door.radius + 0.6) doorArmed = true;
     if (doorArmed && d < door.radius) switchWorld(door.target);
+  }
+
+  // 방송 중 데스크에서 멀어지면 자동 종료
+  if (streaming && world.computer) {
+    const c = world.computer;
+    const d = Math.hypot(p.x - c.approach.x, p.z - c.approach.z);
+    if (d > c.radius + 0.8) stopStreaming();
   }
 }
 
@@ -336,7 +433,8 @@ renderer.setAnimationLoop(() => {
     updateFox(dt);
     for (const c of chicks) updateChick(c, dt);
     updateCamera(dt);
+    if (streaming) streamSim.update(dt);
   }
-  world.update(dt, t, horrorBlend);
+  world.update(dt, t, horrorBlend, streaming);
   renderer.render(scene, camera);
 });

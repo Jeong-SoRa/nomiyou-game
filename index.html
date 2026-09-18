@@ -26,12 +26,28 @@
       #mode.horror { color: #ff5c5c; border-color: rgba(255,92,92,0.5); }
       #fade { position: fixed; inset: 0; background: #000; opacity: 0; pointer-events: none; transition: opacity 0.35s ease; }
       #fade.on { opacity: 1; }
+      #chatLog {
+        position: fixed; right: 16px; bottom: 16px; width: 300px; max-height: 42vh;
+        overflow-y: auto; padding: 10px 12px; border-radius: 10px;
+        background: rgba(10, 12, 20, 0.72); border: 1px solid rgba(255,255,255,0.12);
+        color: #e8e6df; font: 12px/1.5 system-ui, "Malgun Gothic", sans-serif;
+        opacity: 0; pointer-events: none; transition: opacity 0.25s ease;
+      }
+      #chatLog.on { opacity: 1; }
+      #chatLog .chatMsg { padding: 2px 0; }
+      #chatLog .chatMsg b { color: #ffb070; margin-right: 4px; }
+      #chatLog .chatBadge { margin-right: 3px; }
+      #chatLog .chatEvent {
+        background: rgba(255,176,112,0.18); border-radius: 6px;
+        padding: 4px 6px; margin: 3px 0; font-weight: 600;
+      }
     </style>
   </head>
   <body>
     <div id="hud">
       <div><b>노미요</b>(여우) 이동 <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / 방향키 · 달리기 <kbd>Shift</kbd></div>
       <div>의자 앉기/일어나기 <kbd>Space</kbd> · 문으로 걸어가면 밖으로 나감</div>
+      <div>데스크 근처에서 방송 시작/종료 <kbd>C</kbd></div>
       <div>노미요 표정 <kbd>F</kbd> · <b>파닥이</b>(병아리) 표정 <kbd>E</kbd> · 공포 모드 <kbd>H</kbd></div>
       <div>카메라: 마우스 드래그 회전 · 휠 줌</div>
     </div>

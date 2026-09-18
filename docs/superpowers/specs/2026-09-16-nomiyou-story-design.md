@@ -56,21 +56,11 @@
 - [x] `src/world/forest.js` — `computer: null` 추가 (seat: null과 동일 관례). **완료.**
 - [x] `src/characters/fox.js` — `THREE.Sprite` 기반 머리 위 말풍선 + `say(text, duration=1.8)` 메서드 추가, 반환 객체에 `say` 포함. **완료.**
 - [x] `src/ui/chatLog.js` (신규) — `createChatLog()`: `addMessage/setVisible/clear`, DOM 오버레이. **완료.**
-- [ ] `src/systems/streamSim.js` (신규) — **미완성.** `createStreamSim({onMessage, onSubscribe})`: dt 기반 타이머로 일반 채팅(1.2~3.2s 간격) + 구독 이벤트(14~35s 간격) 생성. 한 번 구독한 이름은 이후 일반 채팅에도 `subscriber:true` 유지해야 함. `VIEWER_NAMES`/`SUB_NAMES`/`CHAT_LINES` 풀에서 랜덤 픽.
-- [ ] `src/main.js` — **미착수.** 필요한 변경:
-  - `import { createChatLog } from './ui/chatLog.js';` / `import { createStreamSim } from './systems/streamSim.js';`
-  - `chatLog`, `streamSim` 인스턴스 생성 (streamSim의 `onMessage`→`chatLog.addMessage`, `onSubscribe`→로그 추가 + `reactSubscribe(name)`).
-  - `keydown` 리스너에 `KeyC` 추가 → `streaming ? stopStreaming() : startStreaming()`.
-  - `toggleSit()`의 앉기 로직을 `sitDown()`으로 추출(재사용).
-  - `startStreaming()`/`stopStreaming()` 구현 (근접 체크는 `world.computer` 기준, `toggleSit()`과 동일한 거리 계산 패턴).
-  - `updateFox()`에 데스크에서 `computer.radius+0.8` 이상 멀어지면 자동 `stopStreaming()` 체크 추가 (문 근접 체크와 같은 위치).
-  - `switchWorld()` 시작 시 `if (streaming) stopStreaming();` 추가.
-  - `spawnChick(near)` 함수 추가 — `createChick` + `confine()` + 기존 파닥이 AI 레코드 구조 재사용, `world.computer.approach` 근처에 스폰.
-  - `reactSubscribe(name)` — `fox.say('감사합니다!')` + 잠깐 happy 표정.
-  - **파닥이 영속성**: 신규 모듈 레벨 배열 `sessionChicks` (`{worldName, position, scale}`) — `loadWorld()`가 매번 새로 만드는 `chicks`와 분리, `loadWorld()` 끝에서 해당 월드분 복원.
-  - `world.update(dt, t, horrorBlend, streaming)` 호출로 변경.
-  - `#mode` 배지에 `LIVE` 상태 추가.
-- [ ] `index.html` — **미착수.** `<style>`에 `#chatLog`/`.chatMsg`/`.chatBadge`/`.chatEvent` CSS 추가, `#hud`에 `KeyC` 안내 한 줄 추가.
+- [x] `src/systems/streamSim.js` (신규) — `createStreamSim({onMessage, onSubscribe})`: dt 기반 타이머로 일반 채팅(1.2~3.2s) + 구독 이벤트(첫 구독 14~24s, 이후 20~35s). 한 번 구독한 이름은 이후 일반 채팅에도 `subscriber:true` 유지. **완료.**
+- [x] `src/main.js` — KeyC 방송 시작/종료, `sitDown()` 추출, 근접 체크/자동 종료(데스크 이탈·월드 전환), `spawnChick()`(confine으로 가구 회피), `reactSubscribe()`(말풍선+happy 표정), `sessionChicks` 영속성(월드 전환 후 복원), `world.update(..., streaming)`, `LIVE` 모드 배지, `?stream=1` 디버그 파라미터. `streamSim.update`는 `?steps=N` 가속 루프 안에서 호출(헤드리스 테스트 가속용, 기본 동작 동일). **완료.**
+- [x] `index.html` — `#chatLog` 계열 CSS + HUD에 `C` 키 안내. **완료.**
+
+**1차 슬라이스 완료 및 검증됨 (2026-09-18)**: 헤드리스 Chrome(`?stream=1&steps=90` + virtual-time-budget) 스크린샷으로 확인 — LIVE 배지, 채팅 스크롤, 구독 이벤트 강조 라인, 구독자 🐤 배지 유지, 노미요 착석+방송 화면 텍스처, 파닥이 신규 생성 모두 정상 동작. 이벤트 라인의 이름 중복 표시(이름+본문 속 이름)는 chatLog에서 이벤트일 때 이름 생략으로 수정함.
 
 ### 검증 방법 (수동 플레이테스트)
 `npm install` → `npm run dev` → 데스크로 이동해 `C` 입력 → 방송 상태 진입(모드 `LIVE`, 화면 전환, 채팅 오버레이) → 30~40초 대기하며 채팅/구독 이벤트/파닥이 생성/말풍선 확인 → `C` 재입력 또는 데스크에서 멀어지면 종료 → 파닥이가 방에 남아있는지, 숲에 나갔다 돌아와도 유지되는지 확인. 기존 조작(WASD, Space, KeyE, KeyH, KeyF)이 회귀 없는지도 확인.
@@ -78,6 +68,6 @@
 ## 다른 PC에서 재개하는 방법
 
 1. `git pull` 로 이 문서(및 지금까지의 코드 변경분)를 받는다.
-2. 이 문서의 "구현 진행 상황" 섹션에서 체크되지 않은 항목(`src/systems/streamSim.js` 신규 작성, `src/main.js` 배선, `index.html` CSS/HUD)부터 이어서 구현한다 — 위에 각 파일에 필요한 변경 내용을 구체적으로 적어두었다.
-3. `npm install` (이 저장소에는 `node_modules`가 커밋되어 있지 않음) 후 `npm run dev`로 플레이테스트.
-4. 1차 슬라이스 완료 후에는 "열린 질문" 섹션의 나머지 스토리 설정(고성 모습, 오염 트리거, 파닥이 개별 캐릭터, 오프닝 등)을 계속 브레인스토밍한다 — Claude와 다시 대화를 시작하면서 "이 스펙 문서 이어서 진행해줘"라고 하면 됨.
+2. `npm install` (이 저장소에는 `node_modules`가 커밋되어 있지 않음) 후 `npm run dev`로 플레이테스트 — 데스크 앞에서 `C`로 방송 시작, 또는 `http://localhost:5173/?stream=1`로 바로 확인.
+3. 1차 슬라이스(데스크 상호작용 + 채팅/구독 루프)는 완료·검증됨. 다음 할 일은 ① 직접 플레이해보고 느낌(채팅 속도, 구독 빈도, 파닥이 스폰 위치 등) 조정, ② "열린 질문" 섹션의 나머지 스토리 설정(고성 모습, 오염 트리거, 파닥이 개별 캐릭터, 오프닝 등) 브레인스토밍, ③ 다음 슬라이스(채팅 오염 연출 또는 고성 미니게임) 범위 결정.
+4. Claude와 다시 대화를 시작하면서 "이 스펙 문서 이어서 진행해줘"라고 하면 됨.

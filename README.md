@@ -18,6 +18,7 @@ npm run dev
 | W A S D / 방향키 | 노미요 이동 (카메라 기준) |
 | Shift | 달리기 |
 | Space | 의자에 앉기 / 일어나기 (의자 근처에서) |
+| C | 방송 시작 / 종료 (데스크 근처에서) |
 | F | 노미요 표정 전환 |
 | E | 파닥이 표정 전환 (기본 → 기쁨 → 윙크 → 무표정) |
 | H | 공포 모드 전환 |
@@ -37,4 +38,4 @@ npm run dev
 
 ## 디버그 URL 파라미터
 
-`?world=forest`, `?horror=1`, `?sit=1`, `?at=x,z`, `?keys=KeyW,ShiftLeft`, `?yaw=&dist=&height=`, `?steps=N`, `?trace=1`
+`?world=forest`, `?horror=1`, `?sit=1`, `?stream=1`, `?at=x,z`, `?keys=KeyW,ShiftLeft`, `?yaw=&dist=&height=`, `?steps=N`, `?trace=1`
