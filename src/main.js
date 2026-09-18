@@ -676,7 +676,8 @@ function resolveChoice(which) {
 }
 // ---------- 숲의 괴물 (오염이 극한까지 간 파닥이) ----------
 const monsters = []; // [{ char, grow }]
-function spawnMonster(pos, heading = 0, { scale = 1, grow = 0 } = {}) {
+const MONSTER_SCALE = 1.5; // 기본 모델 키(~3.7)에 곱해지는 배율 — 더 커 보이도록 키움
+function spawnMonster(pos, heading = 0, { scale = MONSTER_SCALE, grow = 0 } = {}) {
   const m = createMonster({ scale });
   m.group.position.copy(pos);
   m.group.rotation.y = heading;
@@ -692,7 +693,7 @@ function transformToMonster(c) {
   scene.remove(g);
   g.visible = false;
   const heading = Math.atan2(fox.group.position.x - g.position.x, fox.group.position.z - g.position.z);
-  spawnMonster(g.position, heading, { scale: 1, grow: 1.2 });
+  spawnMonster(g.position, heading, { scale: MONSTER_SCALE, grow: 1.2 });
 }
 function updateMonsters(dt) {
   for (const m of monsters) {
