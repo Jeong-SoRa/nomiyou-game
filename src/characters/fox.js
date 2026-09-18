@@ -301,6 +301,10 @@ export function createFox({ phone: hasPhone = true } = {}) {
     waterDur = duration;
     waterT = duration;
   }
+  /** 물뿌리개 주둥이 끝의 월드 좌표 (물방울이 나오는 지점) */
+  function spoutWorld(target) {
+    return rose.getWorldPosition(target);
+  }
   // 디버그 전용: 곡괭이질 포즈를 진행도(k, 0~1)에 고정해 스크린샷으로 확인할 수 있게 한다 (헤드리스 테스트에서 실시간 스윙은 타이밍상 포착하기 어려움)
   let frozenChopK = null;
   function previewChop(k) {
@@ -394,5 +398,5 @@ export function createFox({ phone: hasPhone = true } = {}) {
     speech.update(dt);
   }
 
-  return { group: root, update, setExpression, getExpression: () => expression, say, chop, setTool, previewChop, water };
+  return { group: root, update, setExpression, getExpression: () => expression, say, chop, setTool, previewChop, water, spoutWorld };
 }

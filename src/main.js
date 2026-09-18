@@ -19,7 +19,7 @@ import { createAudio } from './systems/audio.js';
 import { createSettings } from './ui/settings.js';
 
 // 디버그용 URL 파라미터: ?world=forest, ?viadoor=1, ?keys=KeyW,ShiftLeft, ?horror=1, ?sit=1, ?stream=1|now, ?day=N, ?done=stream,recruit,
-//   ?companion=1, ?talk=1, ?cam=x,y,z, ?at=x,z, ?yaw=&dist=&height=, ?steps=N, ?gkeys=ArrowLeft, ?gat=x,y, ?water=1, ?pickaxe=1, ?smash=1|hits|chop|statue|warn|choice|rubble|monster, ?monster=1|거리, ?mcam=side,up,front[,aim]
+//   ?companion=1, ?talk=1, ?cam=x,y,z, ?at=x,z, ?yaw=&dist=&height=, ?steps=N, ?gkeys=ArrowLeft, ?gat=x,y[,dir], ?ginv=cup,cupWater,a,b, ?water=1, ?pickaxe=1, ?smash=1|hits|chop|statue|warn|choice|rubble|monster, ?monster=1|거리, ?mcam=side,up,front[,aim]
 const params = new URLSearchParams(location.search);
 
 // ---------- 렌더러 / 씬 / 카메라 ----------
@@ -393,9 +393,7 @@ function waterPlant(dur = 1.6) {
   busyUntil = performance.now() + dur * 1000 + 150;
   faceTarget(p.position);
   fox.water(dur);
-  // 물뿌리개 주둥이 위치: 노미요 앞쪽 약간 위
-  tmpWaterDir.set(Math.sin(foxState.heading), 0, Math.cos(foxState.heading));
-  p.water(tmpWaterDir.multiplyScalar(0.95).add(fox.group.position).setY(2.35), dur);
+  p.water(() => fox.spoutWorld(tmpWaterDir), dur); // 물은 물뿌리개 주둥이(월드 좌표)에서 나온다
   audio.sfx.water();
   setTimeout(() => fox.say(WATER_LINES[Math.floor(Math.random() * WATER_LINES.length)], 1.9), dur * 1000 - 200);
 }
@@ -811,8 +809,14 @@ let knockHeard = false;
 
 const castle = createCastleGame({
   canvas: gameScreen.canvas,
-  onEvent: (type) => {
+  onEvent: (type, detail = {}) => {
     if (type === 'key') audio.sfx.pickup();
+    else if (type === 'fill' || type === 'extinguish') audio.sfx.water();
+    else if (type === 'drawer') audio.sfx.ui();
+    else if (type === 'floor') {
+      audio.sfx.door();
+      gameScreen.setStatus(`지하 ${detail.floor}층으로 내려갔다`);
+    }
     else if (type === 'door') audio.sfx.door();
     else if (type === 'talk') audio.sfx.talk();
     if (type === 'win') {
@@ -886,7 +890,7 @@ function enterGame() {
     chatLog.setVisible(true);
     gameScreen.setVisible(true);
     gameScreen.setStatus('접속 중...');
-    castle.start({ tier: tierIndexForDay(day, { horror }), presence: presenceFor(day), monster: day >= 2 || horror, skipIntro: params.has('nointro'), at: params.has('gat') ? params.get('gat').split(',').map(Number) : null });
+    castle.start({ tier: tierIndexForDay(day, { horror }), presence: presenceFor(day), monster: day >= 2 || horror, skipIntro: params.has('nointro'), at: params.has('gat') ? params.get('gat').split(',').map((v, i) => (i < 2 ? Number(v) : v)) : null, inv: params.has('ginv') ? params.get('ginv').split(',') : null });
     for (const k of (params.get('gkeys') || '').split(',')) if (k) castle.keydown(k); // 디버그: 게임 키 누른 상태로 시작
     streamSim.reset();
     streamTime = 0;

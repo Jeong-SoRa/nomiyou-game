@@ -3,7 +3,9 @@
  * 캔버스 하나에 타일맵 + 캐릭터 + 어둠/횃불 조명 + 대화창을 직접 그린다 (외부 에셋 없음).
  *
  * 조작: 방향키/WASD 이동(Shift 달리기), E 조사/대화/문 열기/대화 넘기기/옷장 숨기·나오기
- * 목표: 갈라진 벽에서 열쇠를 찾고 → 잠긴 문을 열어 → 탈출구까지.
+ * 목표(층마다 반복): 갈라진 벽에서 은열쇠 → 서랍에서 물컵 → 화장실 세면대에서 물 받기 → 오른쪽 문을 막은 화로를 끄고 옆으로 밀기
+ *   → 은열쇠로 오른쪽 문 → 청동열쇠 → 청동열쇠로 왼쪽 문 → 계단으로 아래층. 마지막 층의 계단이 탈출구.
+ * 층마다 구조는 같고 서랍 속 아이템이 바뀐다 (FLOOR_ITEMS). 물컵은 층이 바뀌어도 가지고 내려간다.
  *
  * 스토리 연결
  * - 처음 접속할 때만 오프닝 안내문이 뜬다.
@@ -29,43 +31,69 @@ const INTRO_LINES = [
 const CLOSING_LINES = ['그럼 오늘 방송은 여기까지 할까.', '여러분들 내일 또 봐요. 미요미요~'];
 const DIARY_TEXT = '오늘도 %#$을 봤다. 재미있었다. #@독 버튼을 눌렀다.';
 
-// 범례: # 벽, . 바닥, T 화로(막힘, 빛), 1/2 잠긴 문(열쇠 a/b), a/b 열쇠, X 갈라진 벽(조사하면 열쇠 a),
-//       C 파닥이 NPC, N 쪽지, J 낡은 일기, W 옷장(숨기), E 탈출구, P 시작 위치
+// 범례: # 벽, . 바닥, T 횃불(막힘, 빛), 1 청동열쇠 문(a), 2 은열쇠 문(b), a 청동열쇠, b 은열쇠, X 갈라진 벽(조사하면 은열쇠 b),
+//       C 파닥이 NPC, N 쪽지, J 낡은 일기, W 옷장(숨기), D 서랍(층별 아이템), S 세면대(물컵에 물 받기),
+//       F 문을 막은 화로(불 붙음) → f 꺼진 화로 → G 옆으로 밀어 둔 화로, E 아래층 계단(마지막 층은 탈출구), P 시작 위치
 const MAP = [
   '##############################',
-  '#T...T#T....T.....T#T...T...T#',
+  '#T...T#T.D..T..D..T#T...T...T#',
   '#W...J#............#.........#',
-  '#..b..#............#....E....#',
+  '#..E..#............#....a....#',
   '#..C..1............#.........#',
   '#.....#............#.........#',
   '###X###............#####2#####',
-  '#T...T#.....C......#T...T...T#',
+  '#T...T#.....C......#T...F...T#',
   '#W....#............#........W#',
   '#..................#.........#',
-  '#.....#.....P......#.........#',
+  '#D....#.....P......#.........#',
   '#.....#............#.........#',
-  '#.....#......................#',
+  '#.....#.....................D#',
   '#######............#.........#',
   '#T...T#............#.........#',
-  '#.....#............#.........#',
+  '#...D.#............#.........#',
   '#..N..#............#....C....#',
-  '#..................#.........#',
-  '#.....#............#.........#',
-  '#..C..#............#....N....#',
-  '#T...T#............#T.......T#',
+  '#..................#....######',
+  '#.....#............#....#...S#',
+  '#..C..#............#...N.....#',
+  '#T...T#............#T...#...T#',
   '##############################',
 ];
+const FLOOR_COUNT = 3; // 지하 3층의 계단이 탈출구
+// 서랍 속 아이템 (층 → "x,y" → 대사 배열 또는 { item, lines }). 층 수가 FLOOR_ITEMS 보다 많으면 마지막 표를 재사용
+const FLOOR_ITEMS = {
+  1: {
+    '9,1': { item: 'cup', lines: ['서랍 안에 낡은 물컵이 있다.', '물컵을 손에 넣었다!'] },
+    '15,1': ['먼지 쌓인 서랍. 아무것도 없다.'],
+    '1,10': ['서랍 속에 초 조각이 굴러다닌다. 쓸모는 없어 보인다.'],
+    '28,12': ["구겨진 영수증: '구독 1개월 — 결제 완료'"],
+    '4,15': ['녹슨 열쇠고리. 열쇠는 달려 있지 않다.'],
+  },
+  2: {
+    '9,1': ['빈 서랍. 누가 먼저 뒤진 것 같다.'],
+    '15,1': ['찢어진 사진 반쪽. 하얀 무언가가 웃고 있다.'],
+    '1,10': ["서랍 바닥에 긁힌 글씨: '위층은 잊어'"],
+    '28,12': ['초록색 잎 하나가 들어 있다. 대파 잎 같다.'],
+    '4,15': ['깃털 몇 개. 하얗고 작다.'],
+  },
+  3: {
+    '9,1': ["빛바랜 쪽지: '내려갈수록 가까워진다'"],
+    '15,1': ['서랍이 텅 비었다.'],
+    '1,10': ["작은 나무 조각. '좋아요' 모양이다."],
+    '28,12': ['먼지 속에 발자국 스티커. 노미요 방에 있던 것과 똑같다.'],
+    '4,15': ['빈 서랍.'],
+  },
+};
 const ROOM_A = { minX: 1, maxX: 5, minY: 1, maxY: 5 }; // 왼쪽 문 너머의 방 (1일차 방송이 끝나는 곳)
 
 // NPC 대사 (위치 키 "x,y"), tier 별. 마지막 배열 원소까지 다 읽으면 대화 종료
 const NPC_LINES = {
   '12,7': [
-    ['안녕, 노미요! 이 성은 문이 전부 잠겨 있어.', '열쇠는 갈라진 벽 안에 숨겨져 있대. 왼쪽 방의 벽을 잘 살펴봐.'],
+    ['안녕, 노미요! 이 성은 문이 전부 잠겨 있어.', '은열쇠는 왼쪽 방 갈라진 벽 안에 있대. 근데 오른쪽 문은 화로가 막고 있어.', '화로를 끄려면 물이 필요해. 서랍을 뒤져 봐. 물은 오른쪽 아래 화장실에서 받을 수 있어.'],
     ['...노미요? 여기 왜 이렇게 어두워.', '열쇠는 갈라진 벽 안에 있어. 근데 이 성, 어쩐지 숲 냄새가 나.'],
     ['노미요... 나 여기 있어. 왜 나를 몰라?', '갈라진 벽... 벽 뒤에... 우리가 있어.'],
   ],
   '3,4': [
-    ['여기 은열쇠가 있어! 오른쪽 위 방 문에 쓰면 돼.'],
+    ['여기까지 왔구나! 저 계단으로 내려가면 다음 층이야.', '아래층도 구조는 비슷해. 서랍에 뭐가 들었는지 꼭 확인해.'],
     ['이 방... 밖에서 누가 문을 두드리는 소리 들었어?'],
     ['문 열지 마. 열지 마. 열지 마.'],
   ],
@@ -75,7 +103,7 @@ const NPC_LINES = {
     ['보내줘... 아니, 아무것도 아니야. ㅎㅎ'],
   ],
   '24,16': [
-    ['위쪽 문은 은열쇠로 열려. 탈출구는 그 너머야!'],
+    ['화장실 세면대에서 물이 나와. 컵이 있으면 담을 수 있을 거야.', '청동열쇠는 화로 뒤의 문 안에 있어. 그걸로 왼쪽 문을 열어.'],
     ['탈출구 너머에 뭐가 있는지 아무도 몰라. 돌아온 애가 없거든.'],
     ['탈출구는 없어. 여긴 숲이야. 노미요, 여긴 숲이야.'],
   ],
@@ -86,9 +114,9 @@ const NOTE_LINES = {
     ["구겨진 쪽지: '나갈 수 없어. 놓아주지 않을거야. 아무도 못나가'"],
     ["구겨진 쪽지: '나갈 수 없어. 놓아주지 않을거야. 아무도 못나가. 아무도. 아무도.'"],
   ],
-  '24,19': [
-    ["벽에 긁힌 글씨: '탈출구는 북쪽'"],
-    ["벽에 긁힌 글씨: '탈출구는 북쪽... 아니, 어디에도'"],
+  '23,19': [
+    ["벽에 긁힌 글씨: '탈출구는 지하 깊은 곳'"],
+    ["벽에 긁힌 글씨: '탈출구는 지하 깊은 곳... 아니, 어디에도'"],
     ["벽에 긁힌 글씨: 'ㅂㅗㄴㅐㅈㅝ ㅂㅗㄴㅐㅈㅝ'"],
   ],
 };
@@ -143,22 +171,17 @@ export function createCastleGame({ canvas, onEvent = () => {} }) {
   let staticFx = 0; // 치지직 화면 효과 남은 시간
   let scareFx = 0; // 괴물 등장 연출 남은 시간
   let stepsTaken = 0;
+  let floor = 1; // 지하 몇 층인지 (1부터)
+  let openedDrawers = new Set(); // 이 층에서 연 서랍 "x,y"
 
-  function reset(t) {
-    tier = t;
+  /** 현재 층의 타일·NPC·플레이어를 MAP 에서 새로 만든다 (층 이동 시 재사용) */
+  function buildFloor() {
     tiles = MAP.map((row) => row.split(''));
     npcs = [];
-    inventory = new Set();
     revealedX = false;
-    elapsed = 0;
-    toast = null;
-    dialog = null;
+    openedDrawers = new Set();
     monster = null;
     hidden = null;
-    staticFx = 0;
-    scareFx = 0;
-    stepsTaken = 0;
-    roomAEntered = false;
     for (let y = 0; y < H; y++) {
       for (let x = 0; x < W; x++) {
         const c = tiles[y][x];
@@ -172,6 +195,31 @@ export function createCastleGame({ canvas, onEvent = () => {} }) {
       }
     }
     flicker = Array.from({ length: 64 }, () => Math.random() * 10);
+  }
+  /** 계단으로 아래층: 열쇠는 두고, 물컵은 가지고 내려간다 */
+  function nextFloor() {
+    floor++;
+    inventory.delete('a');
+    inventory.delete('b');
+    buildFloor();
+    stepsTaken = 0;
+    state = 'play';
+    toast = { text: `계단을 내려왔다. 지하 ${floor}층.`, timer: 3 };
+    onEvent('floor', { floor });
+  }
+
+  function reset(t) {
+    tier = t;
+    floor = 1;
+    inventory = new Set();
+    elapsed = 0;
+    toast = null;
+    dialog = null;
+    staticFx = 0;
+    scareFx = 0;
+    stepsTaken = 0;
+    roomAEntered = false;
+    buildFloor();
     state = 'play';
   }
 
@@ -186,6 +234,8 @@ export function createCastleGame({ canvas, onEvent = () => {} }) {
       revealedX,
       elapsed,
       roomAEntered,
+      floor,
+      drawers: [...openedDrawers],
       dead: npcs.filter((n) => !n.alive).map((n) => n.key),
     };
   }
@@ -196,6 +246,8 @@ export function createCastleGame({ canvas, onEvent = () => {} }) {
     revealedX = sv.revealedX;
     elapsed = sv.elapsed;
     roomAEntered = !!sv.roomAEntered;
+    floor = sv.floor ?? 1;
+    openedDrawers = new Set(sv.drawers ?? []);
     for (const n of npcs) if (sv.dead.includes(n.key)) n.alive = false;
   }
 
@@ -209,10 +261,12 @@ export function createCastleGame({ canvas, onEvent = () => {} }) {
     active = true;
     keys.clear();
     if (o.skipIntro) introSeen = true; // 디버그
-    if (o.at) { // 디버그(?gat=x,y): 시작 좌표 지정
+    if (o.at) { // 디버그(?gat=x,y[,dir]): 시작 좌표(와 바라보는 방향) 지정
       player.x = player.px = player.fromX = o.at[0];
       player.y = player.py = player.fromY = o.at[1];
+      if (o.at[2] && DIRS[o.at[2]]) player.dir = o.at[2];
     }
+    if (o.inv) for (const it of o.inv) inventory.add(it); // 디버그(?ginv=cup,cupWater,a,b)
     if (!introSeen) {
       introSeen = true;
       say('', INTRO_LINES, { onDone: () => (toast = { text: '방향키로 이동 · E 조사', timer: 4 }) });
@@ -230,7 +284,7 @@ export function createCastleGame({ canvas, onEvent = () => {} }) {
   const at = (x, y) => (x < 0 || y < 0 || x >= W || y >= H ? '#' : tiles[y][x]);
   const ghostAt = (x, y) => npcs.find((n) => n.alive && n.x === x && n.y === y);
   const npcAt = (x, y) => (presence >= 1 ? ghostAt(x, y) : null); // 또렷해진 뒤에만 부딪히고 대화할 수 있음
-  const BLOCK = new Set(['#', 'T', 'X', 'N', 'J', 'W', '1', '2']);
+  const BLOCK = new Set(['#', 'T', 'X', 'N', 'J', 'W', '1', '2', 'D', 'S', 'F', 'f', 'G']);
   function walkable(x, y) {
     if (BLOCK.has(at(x, y))) return false;
     if (npcAt(x, y)) return false;
@@ -325,8 +379,8 @@ export function createCastleGame({ canvas, onEvent = () => {} }) {
     if (c === 'X') {
       if (!revealedX) {
         revealedX = true;
-        inventory.add('a');
-        say('', ['벽이 갈라져 있다... 틈새에 뭔가 끼워져 있다.', '청동 열쇠를 손에 넣었다!'], { glitchAmount: tier === 2 ? 0.08 : 0 });
+        inventory.add('b');
+        say('', ['벽이 갈라져 있다... 틈새에 뭔가 끼워져 있다.', '은 열쇠를 손에 넣었다!'], { glitchAmount: tier === 2 ? 0.08 : 0 });
         onEvent('key');
       } else say('', ['갈라진 벽. 이제 아무것도 없다.']);
       return;
@@ -338,7 +392,55 @@ export function createCastleGame({ canvas, onEvent = () => {} }) {
     }
     if (c === 'J') return readDiary(tx, ty);
     if (c === 'W') return enterWardrobe(tx, ty);
-    if (c === 'T') return say('', ['화로가 타오르고 있다. 따뜻하다.']);
+    if (c === 'T') return say('', ['횃불이 타오르고 있다. 따뜻하다.']);
+    if (c === 'D') return openDrawer(tx, ty);
+    if (c === 'S') return useSink();
+    if (c === 'F') return touchBrazier(tx, ty);
+    if (c === 'f') return pushBrazier(tx, ty);
+    if (c === 'G') return say('', ['식은 화로. 이제 문을 막지 않는다.']);
+  }
+
+  // ---------- 서랍 / 세면대 / 화로 ----------
+  const hasCup = () => inventory.has('cup') || inventory.has('cupWater');
+  function openDrawer(tx, ty) {
+    const key = `${tx},${ty}`;
+    if (openedDrawers.has(key)) return say('', ['빈 서랍이다.']);
+    openedDrawers.add(key);
+    onEvent('drawer');
+    const table = FLOOR_ITEMS[Math.min(floor, Math.max(...Object.keys(FLOOR_ITEMS).map(Number)))] ?? {};
+    const it = table[key];
+    if (!it) return say('', ['빈 서랍이다.']);
+    if (Array.isArray(it)) return say('', it, { glitchAmount: tier === 2 ? 0.1 : 0 });
+    if (it.item === 'cup') {
+      if (hasCup()) return say('', ['물컵이 하나 더 있다. 하나면 충분하다.']);
+      inventory.add('cup');
+      onEvent('key');
+    }
+    say('', it.lines);
+  }
+  function useSink() {
+    if (inventory.has('cupWater')) return say('', ['물컵은 이미 가득 차 있다.']);
+    if (!inventory.has('cup')) return say('', ['세면대. 수도꼭지에서 물이 졸졸 흐른다.', '담을 게 없다.']);
+    inventory.delete('cup');
+    inventory.add('cupWater');
+    onEvent('fill');
+    say('', ['수도꼭지를 틀었다. 물컵에 물을 가득 담았다.']);
+  }
+  function touchBrazier(tx, ty) {
+    if (!inventory.has('cupWater')) return say('', ['화로가 문을 막고 있다. 뜨거워서 만질 수 없어.']);
+    inventory.delete('cupWater');
+    inventory.add('cup');
+    tiles[ty][tx] = 'f';
+    onEvent('extinguish');
+    say('', ['물을 끼얹었다. 치이익—', '불이 꺼졌다. 이제 만질 수 있을 것 같다.']);
+  }
+  function pushBrazier(tx, ty) {
+    const side = at(tx + 1, ty) === '.' ? tx + 1 : at(tx - 1, ty) === '.' ? tx - 1 : null;
+    if (side === null) return say('', ['밀 자리가 없다.']);
+    tiles[ty][tx] = '.';
+    tiles[ty][side] = 'G';
+    onEvent('door');
+    say('', ['식은 화로를 옆으로 밀었다.', '문이 드러났다.']);
   }
 
   function talkTo(npc) {
@@ -616,6 +718,7 @@ export function createCastleGame({ canvas, onEvent = () => {} }) {
       toast = { text: `${c === 'a' ? '청동 열쇠' : '은 열쇠'}를 주웠다!`, timer: 2.5 };
       onEvent('key');
     } else if (c === 'E') {
+      if (floor < FLOOR_COUNT) return nextFloor();
       state = 'won';
       save = null; // 탈출하면 다음 접속은 처음부터
       onEvent('win', { elapsed });
@@ -744,7 +847,7 @@ export function createCastleGame({ canvas, onEvent = () => {} }) {
     ctx.lineTo(sx + 16, sy + 31);
     ctx.stroke();
     if (!revealedX) {
-      ctx.fillStyle = '#d9964a';
+      ctx.fillStyle = '#dfe4ec';
       ctx.fillRect(sx + 15, sy + 12, 3, 3);
     }
   }
@@ -764,15 +867,117 @@ export function createCastleGame({ canvas, onEvent = () => {} }) {
   }
   function drawExit(sx, sy) {
     drawFloor(sx, sy, 0, 0);
-    ctx.fillStyle = '#0c1a12';
+    const last = floor >= FLOOR_COUNT;
+    ctx.fillStyle = last ? '#0c1a12' : '#0a0a14';
     ctx.fillRect(sx + 4, sy + 2, TILE - 8, TILE - 2);
     const pulse = 0.5 + Math.sin(time * 3) * 0.3;
-    ctx.fillStyle = `rgba(120,255,170,${pulse * 0.5})`;
-    ctx.fillRect(sx + 8, sy + 6, TILE - 16, TILE - 6);
-    ctx.fillStyle = '#bff5d2';
-    ctx.font = 'bold 9px monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText('EXIT', sx + 16, sy + 20);
+    if (last) {
+      ctx.fillStyle = `rgba(120,255,170,${pulse * 0.5})`;
+      ctx.fillRect(sx + 8, sy + 6, TILE - 16, TILE - 6);
+      ctx.fillStyle = '#bff5d2';
+      ctx.font = 'bold 9px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('EXIT', sx + 16, sy + 20);
+    } else {
+      // 아래로 내려가는 계단: 점점 어두워지는 단
+      for (let i = 0; i < 4; i++) {
+        const g = 70 - i * 16;
+        ctx.fillStyle = `rgb(${g},${g - 4},${g + 8})`;
+        ctx.fillRect(sx + 6, sy + 4 + i * 7, TILE - 12, 6);
+      }
+      ctx.fillStyle = `rgba(255,224,138,${0.35 + pulse * 0.4})`;
+      ctx.font = 'bold 10px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('▼', sx + 16, sy + 14);
+    }
+  }
+  function drawDrawer(sx, sy, open) {
+    drawFloor(sx, sy, 0, 0);
+    ctx.fillStyle = '#4a3220';
+    ctx.fillRect(sx + 3, sy + 6, TILE - 6, TILE - 8);
+    ctx.fillStyle = '#6b4a2e';
+    ctx.fillRect(sx + 5, sy + 8, TILE - 10, 9);
+    ctx.fillRect(sx + 5, sy + 19, TILE - 10, 9);
+    if (open) {
+      // 위 칸이 빠져나와 있고 안은 비어 어둡다
+      ctx.fillStyle = '#1a1008';
+      ctx.fillRect(sx + 5, sy + 8, TILE - 10, 9);
+      ctx.fillStyle = '#7d5a3a';
+      ctx.fillRect(sx + 3, sy + 1, TILE - 6, 7);
+      ctx.fillStyle = '#c9a35a';
+      ctx.fillRect(sx + 14, sy + 4, 4, 2);
+    } else {
+      ctx.fillStyle = '#c9a35a';
+      ctx.fillRect(sx + 14, sy + 12, 4, 2);
+    }
+    ctx.fillStyle = '#c9a35a';
+    ctx.fillRect(sx + 14, sy + 23, 4, 2);
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.fillRect(sx + 3, sy + TILE - 3, TILE - 6, 3);
+  }
+  function drawSink(sx, sy) {
+    drawFloor(sx, sy, 0, 0);
+    ctx.fillStyle = '#d8dde6';
+    ctx.fillRect(sx + 5, sy + 12, TILE - 10, 14); // 세면대
+    ctx.fillStyle = '#9fb3c8';
+    ctx.fillRect(sx + 8, sy + 15, TILE - 16, 8); // 대야 안
+    ctx.fillStyle = '#7fc4ff';
+    ctx.fillRect(sx + 10, sy + 18, TILE - 20, 4); // 고인 물
+    ctx.fillStyle = '#c0c6cf';
+    ctx.fillRect(sx + 15, sy + 4, 3, 9); // 수도꼭지
+    ctx.fillRect(sx + 15, sy + 4, 8, 3);
+    const drip = (time * 1.5) % 1;
+    ctx.fillStyle = '#bfe6ff';
+    ctx.fillRect(sx + 21, sy + 7 + drip * 9, 2, 3); // 똑똑 떨어지는 물방울
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.fillRect(sx + 5, sy + 26, TILE - 10, 2);
+  }
+  function drawBrazier(sx, sy, lit, i) {
+    drawFloor(sx, sy, 0, 0);
+    ctx.fillStyle = '#3a3238';
+    ctx.beginPath();
+    ctx.arc(sx + 16, sy + 20, 11, 0, Math.PI); // 대야
+    ctx.fill();
+    ctx.fillRect(sx + 5, sy + 18, 22, 4);
+    ctx.fillRect(sx + 13, sy + 27, 6, 4);
+    if (lit) {
+      const f = Math.sin(time * 14 + flicker[i % 64]) * 2 + Math.sin(time * 5 + i) * 1.5;
+      ctx.fillStyle = '#ff9a3c';
+      ctx.beginPath();
+      ctx.moveTo(sx + 16, sy + 2 + f);
+      ctx.lineTo(sx + 25, sy + 19);
+      ctx.lineTo(sx + 7, sy + 19);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = '#ffe08a';
+      ctx.beginPath();
+      ctx.moveTo(sx + 16, sy + 8 + f);
+      ctx.lineTo(sx + 21, sy + 19);
+      ctx.lineTo(sx + 11, sy + 19);
+      ctx.closePath();
+      ctx.fill();
+    } else {
+      // 꺼진 숯과 피어오르는 연기
+      ctx.fillStyle = '#1e1a22';
+      ctx.fillRect(sx + 9, sy + 14, 14, 5);
+      const k = (time * 0.6) % 1;
+      ctx.fillStyle = `rgba(160,160,170,${0.35 * (1 - k)})`;
+      ctx.fillRect(sx + 14 + Math.sin(time * 2) * 3, sy + 12 - k * 12, 4, 4);
+    }
+  }
+  function drawCup(x, y, filled) {
+    ctx.fillStyle = '#e9e2cf';
+    ctx.fillRect(x + 4, y, 10, 13);
+    ctx.fillRect(x + 14, y + 3, 3, 2);
+    ctx.fillRect(x + 16, y + 3, 2, 6);
+    ctx.fillRect(x + 14, y + 8, 3, 2);
+    if (filled) {
+      ctx.fillStyle = '#7fc4ff';
+      ctx.fillRect(x + 6, y + 3, 6, 8);
+    } else {
+      ctx.fillStyle = '#b9b2a2';
+      ctx.fillRect(x + 6, y + 2, 6, 9);
+    }
   }
   function drawChick(sx, sy, n) {
     const bob = Math.sin(n.bob * 4) * 1.5;
@@ -916,6 +1121,12 @@ export function createCastleGame({ canvas, onEvent = () => {} }) {
         else if (c === 'X') drawCrack(sx, sy, x, y);
         else if (c === '1' || c === '2') drawDoor(sx, sy, c);
         else if (c === 'W') drawWardrobe(sx, sy, hidden && hidden.wx === x && hidden.wy === y);
+        else if (c === 'D') drawDrawer(sx, sy, openedDrawers.has(`${x},${y}`));
+        else if (c === 'S') drawSink(sx, sy);
+        else if (c === 'F') {
+          drawBrazier(sx, sy, true, x * 31 + y);
+          lights.push([sx + 16, sy + 14, 100 + Math.sin(time * 9 + x + y) * 6, 1]);
+        } else if (c === 'f' || c === 'G') drawBrazier(sx, sy, false, 0);
         else if (c === 'T') {
           drawTorch(sx, sy, x * 31 + y);
           lights.push([sx + 16, sy + 10, 90 + Math.sin(time * 9 + x + y) * 6, 0.95]);
@@ -1107,23 +1318,30 @@ export function createCastleGame({ canvas, onEvent = () => {} }) {
   function drawHud() {
     const hy = 40;
     ctx.fillStyle = 'rgba(0,0,0,0.55)';
-    ctx.fillRect(8, hy, 96, 26);
+    ctx.fillRect(8, hy, 132, 26);
     ctx.fillStyle = '#e8e6df';
     ctx.font = '12px "Malgun Gothic", system-ui, sans-serif';
     ctx.textAlign = 'left';
-    ctx.fillText('열쇠', 14, hy + 17);
-    let kx = 46;
+    ctx.fillText('소지품', 14, hy + 17);
+    let kx = 58;
     for (const k of ['a', 'b']) {
       ctx.globalAlpha = inventory.has(k) ? 1 : 0.18;
       drawKey(kx, hy - 2, k, 0);
       ctx.globalAlpha = 1;
       kx += 28;
     }
+    ctx.globalAlpha = hasCup() ? 1 : 0.18;
+    drawCup(kx, hy + 6, inventory.has('cupWater'));
+    ctx.globalAlpha = 1;
     const m = Math.floor(elapsed / 60);
     const s = Math.floor(elapsed % 60);
     ctx.textAlign = 'right';
     ctx.fillStyle = 'rgba(0,0,0,0.55)';
-    ctx.fillRect(CANVAS_W - 66, hy, 58, 26);
+    ctx.fillRect(CANVAS_W - 100, hy, 92, 26);
+    ctx.fillStyle = '#ffb070';
+    ctx.textAlign = 'left';
+    ctx.fillText(`B${floor}`, CANVAS_W - 94, hy + 17);
+    ctx.textAlign = 'right';
     ctx.fillStyle = '#e8e6df';
     ctx.fillText(`${m}:${s.toString().padStart(2, '0')}`, CANVAS_W - 14, hy + 17);
   }

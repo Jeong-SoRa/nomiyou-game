@@ -535,11 +535,11 @@ export function createHouse() {
   let pourAcc = 0;
   let perk = 0;
   let worldT = 0;
-  const pourFrom = new THREE.Vector3();
+  let pourFrom = () => PLANT_POS; // 물방울이 나오는 지점을 돌려주는 함수 (매 프레임 물뿌리개 주둥이를 따라간다)
   const dropTarget = new THREE.Vector3();
-  /** from: 물뿌리개 주둥이 위치(월드), duration: 붓는 시간 */
+  /** from: 물뿌리개 주둥이 위치(월드 Vector3, 또는 매 프레임 그것을 돌려주는 함수), duration: 붓는 시간 */
   function waterPlant(from, duration = 1.6) {
-    pourFrom.copy(from);
+    pourFrom = typeof from === 'function' ? from : () => from;
     pourT = duration;
     pourAcc = 0;
   }
@@ -554,7 +554,7 @@ export function createHouse() {
         if (!d) break;
         d.life = 1.1;
         d.mesh.visible = true;
-        d.mesh.position.copy(pourFrom).add(new THREE.Vector3(rand(-0.06, 0.06), rand(-0.04, 0.04), rand(-0.06, 0.06)));
+        d.mesh.position.copy(pourFrom()).add(new THREE.Vector3(rand(-0.06, 0.06), rand(-0.04, 0.04), rand(-0.06, 0.06)));
         dropTarget.copy(PLANT_POS).add(new THREE.Vector3(rand(-0.5, 0.5), 2.6, rand(-0.5, 0.5)));
         d.v.subVectors(dropTarget, d.mesh.position);
         const dist = d.v.length();
