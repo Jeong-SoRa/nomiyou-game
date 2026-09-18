@@ -15,7 +15,8 @@ const INNER_EAR = 0x4b3530;
 const CHEEK = 0xf9a8a0;
 const LINE = 0x3a2418;
 
-export function createFox() {
+/** @param {{ phone?: boolean }} [opts] phone: false 면 스마트폰을 숨기고 오른팔을 자연스럽게 내린다 (캐릭터 설정은 유지) */
+export function createFox({ phone: hasPhone = true } = {}) {
   const root = new THREE.Group();
   root.name = 'nomiyo';
 
@@ -107,6 +108,8 @@ export function createFox() {
   phone.add(phoneBody, screen, screenLight);
   phone.position.set(0, -0.64, 0.3);
   phone.rotation.x = -0.8; // 화면이 얼굴 쪽을 향하도록
+  phone.visible = hasPhone; // 이 게임에선 폰이 필요 없어 플래그로 숨김 (캐릭터 설정상 폰은 그대로 둔다)
+  screenLight.visible = hasPhone;
   arms[1].add(phone);
 
   // 꼬리: 통짜 회전체(lathe). 끝부분만 검정이고 경계는 지그재그 텍스처
@@ -320,13 +323,20 @@ export function createFox() {
       arms[0].rotation.x = -swing * 0.6;
       arms[0].rotation.z = -0.25;
     }
-    const holdPose = -1.35 + Math.sin(time * 1.6) * 0.05;
-    arms[1].rotation.x = THREE.MathUtils.lerp(holdPose, swing * 0.6 - 0.6, moveBlend);
-    arms[1].rotation.z = THREE.MathUtils.lerp(-0.35, 0.25, moveBlend);
+    if (hasPhone) {
+      // 폰을 든 오른팔: 서 있을 땐 폰을 얼굴 앞에 들고, 걸을 땐 스윙
+      const holdPose = -1.35 + Math.sin(time * 1.6) * 0.05;
+      arms[1].rotation.x = THREE.MathUtils.lerp(holdPose, swing * 0.6 - 0.6, moveBlend);
+      arms[1].rotation.z = THREE.MathUtils.lerp(-0.35, 0.25, moveBlend);
+    } else {
+      // 폰이 없으면 왼팔과 대칭으로 자연스럽게 내리고 걷기 스윙
+      arms[1].rotation.x = swing * 0.6;
+      arms[1].rotation.z = 0.25;
+    }
 
     head.position.y = HEAD_Y + bounce * 0.8 + Math.sin(time * 2.2) * 0.02;
     head.rotation.z = Math.sin(phase * 0.5) * 0.06 * moveBlend;
-    head.rotation.x = THREE.MathUtils.lerp(0.12, 0.05, moveBlend); // 폰을 내려다보는 느낌
+    head.rotation.x = hasPhone ? THREE.MathUtils.lerp(0.12, 0.05, moveBlend) : 0.05; // 폰이 있으면 내려다보는 느낌
 
     // 꼬리: 좌우 흔들기 + 끝으로 갈수록 크게 출렁이는 웨이브
     const wag = Math.sin(time * 3 + phase * 0.8);
