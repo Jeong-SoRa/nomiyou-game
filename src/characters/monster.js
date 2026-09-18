@@ -8,12 +8,14 @@ import { toon, mesh } from '../helpers.js';
  * 몸·목·팔·옷자락은 전부 새까맣게 어둠에 녹아들고, 얼굴만 핏기 없는 뼈색으로 희미하게 빛난다.
  * 파닥이였다는 흔적:
  *  - 하얗던 몸 색이 다 빠져 바싹 마른 뼈색 가면이 된 얼굴
- *  - 머리 위 대파 새싹이 기괴하게 웃자라 여러 가닥으로 꺾이고 말리며 시들어, 몇 가닥은 얼굴 앞으로 흘러내림
+ *  - 머리 위 대파 새싹이 기괴하게 웃자라 굵고 긴 가닥들로 높이 솟아 양옆으로 벌어지고, 몇 가닥은 얼굴 앞으로 흘러내림
+ *  - 몸통 양옆에서 뻗어 나온 검은 갈퀴 손이 노미요 좌우를 감싸듯 벌어져 있다가 가까워지면 조여 들어옴
  * 얼굴 특징:
  *  - 텅 빈 검은 눈구멍 (깊숙한 곳에서만 아주 작은 붉은 점이 빛남)
  *  - 좁고 길게 아래로 늘어진 두개골 (눈썹 없음)
  *  - 턱이 있을 수 없는 길이까지 아래로 축 늘어져 벌어진 입 — 위턱에서 긴 송곳니가 늘어지고,
  *    한참 아래 턱 끝에 작은 이빨 무더기가 모여 있다. 그 사이는 새까만 구멍
+ * 노미요가 가까이 오면 목을 고무처럼 늘려 얼굴을 코앞까지 들이민다 (update 의 dist 로 제어).
  * 기본 scale 1 일 때 키 ≈ 4.7 (노미요 ≈ 2.5 배 이상). 노미요를 내려다보는 자세.
  */
 const BLACK = 0x040404;
@@ -100,11 +102,25 @@ export function createMonster({ scale = 1 } = {}) {
   body.add(headGroup);
   const HEAD_TILT = headGroup.rotation.x;
 
-  // 목: 두개골 뒤에서 몸통 꼭대기 안쪽으로 비스듬히 이어지는 가늘고 긴 목
-  const neck = mesh(new THREE.CylinderGeometry(0.17, 0.36, 1.5, 6), mBlack);
-  neck.position.set(-0.02, -0.98, -0.47);
-  neck.rotation.x = 0.46;
-  headGroup.add(neck);
+  // 목: 몸통 꼭대기 안쪽(앵커)에서 두개골 밑동까지 매 프레임 늘려 붙이는 가늘고 긴 목.
+  // 머리가 앞으로 들이밀릴 때 이 목이 고무처럼 쭉 늘어난다.
+  const HEAD_BASE = new THREE.Vector3(0.05, 2.7, 0.75); // 평소 머리 위치(body 기준)
+  const NECK_ANCHOR = new THREE.Vector3(0, 1.3, -0.05);
+  const HEAD_SOCKET = new THREE.Vector3(0, -0.3, -0.2); // 두개골 밑동(headGroup 기준)
+  const neckGeo = new THREE.CylinderGeometry(0.17, 0.36, 1, 6);
+  neckGeo.translate(0, 0.5, 0); // 밑동(y=0)이 앵커, 끝(y=1)이 머리
+  const neck = mesh(neckGeo, mBlack);
+  body.add(neck);
+  const _neckDir = new THREE.Vector3();
+  const _up = new THREE.Vector3(0, 1, 0);
+  function fitNeck() {
+    _neckDir.copy(HEAD_SOCKET).applyEuler(headGroup.rotation).add(headGroup.position).sub(NECK_ANCHOR);
+    const len = _neckDir.length();
+    neck.position.copy(NECK_ANCHOR);
+    neck.quaternion.setFromUnitVectors(_up, _neckDir.divideScalar(len));
+    neck.scale.set(1, len, 1);
+  }
+  fitNeck();
 
   // ----- 뼈 가면 얼굴 -----
   // 두개골 윗부분: 둥근 머리통
@@ -192,11 +208,6 @@ export function createMonster({ scale = 1 } = {}) {
   mouthVoid.position.set(0, -JAW_LEN / 2 + 0.02, 0.06); // 턱뼈 가닥보다 뒤쪽 — 얼굴 앞면을 가리지 않게
   mouthVoid.castShadow = false;
   jawGroup.add(mouthVoid);
-  // 턱 안쪽으로 이어지는 검은 목구멍(뒤쪽을 막아 얼굴 뒤가 보이지 않게)
-  const throat = mesh(new THREE.BoxGeometry(0.5, 0.5, 0.4), mVoid);
-  throat.position.set(0, -0.95, -0.06);
-  throat.castShadow = false;
-  headGroup.add(throat);
 
   // ----- 머리 위 대파: 파닥이의 싱싱한 새싹이 기괴하게 웃자라 뒤틀리고 시든 모습 -----
   // 부어오른 병든 밑동에서 굵기·길이가 제각각인 줄기가 여러 가닥 삐져나와 꺾이고 말리며,
@@ -208,8 +219,8 @@ export function createMonster({ scale = 1 } = {}) {
   const cLeekBase = new THREE.Color(LEEK_ROT);
   const cLeekTip = new THREE.Color(LEEK_DEAD);
   // 밑동: 매끈한 흰 밑동이 아니라 울퉁불퉁 부어오른 덩어리
-  const bulb = mesh(new THREE.SphereGeometry(0.24, 7, 6), toon(0x8f9478, { emissive: 0x11120c }));
-  bulb.scale.set(1.25, 0.85, 1.05);
+  const bulb = mesh(new THREE.SphereGeometry(0.3, 7, 6), toon(0x8f9478, { emissive: 0x11120c }));
+  bulb.scale.set(1.3, 0.85, 1.1);
   leekRoot.add(bulb);
   for (let i = 0; i < 3; i++) {
     const lump = mesh(new THREE.SphereGeometry(0.07 + Math.random() * 0.05, 6, 5), toon(0x7f8468, { emissive: 0x0d0e09 }));
@@ -272,75 +283,146 @@ export function createMonster({ scale = 1 } = {}) {
     leekStalks.push({ base, seed: Math.random() * 10, amp: 0.02 + droop * 0.03, rx: base.rotation.x, rz: base.rotation.z });
     return base;
   }
-  // 굵고 긴 주 줄기: 위로 솟았다가 뒤로 꺾여 늘어진다
-  addStalk({ len: 1.6, segs: 8, r: 0.12, dir: [-0.25, 0, -0.15], droop: 0.16, kink: 0.5, split: true });
-  // 두 번째 굵은 줄기: 반대쪽으로 비스듬히, 더 심하게 꺾임
-  addStalk({ len: 1.2, segs: 7, r: 0.1, dir: [0.1, 0, 0.55], droop: 0.14, kink: 0.7, split: false });
+  // 위협적으로 화면을 채우는 큰 가닥들: 높이 솟아 양옆으로 넓게 벌어진다
+  addStalk({ len: 2.4, segs: 9, r: 0.15, dir: [-0.3, 0, -0.35], droop: 0.1, kink: 0.45, split: true });
+  addStalk({ len: 2.1, segs: 9, r: 0.14, dir: [-0.15, 0, 0.6], droop: 0.1, kink: 0.5, split: true });
+  addStalk({ len: 1.9, segs: 8, r: 0.12, dir: [0.2, 0, -0.95], droop: 0.12, kink: 0.6, split: false });
+  addStalk({ len: 1.8, segs: 8, r: 0.12, dir: [-0.5, 0, 1.0], droop: 0.14, kink: 0.6, split: true });
+  addStalk({ len: 1.6, segs: 7, r: 0.11, dir: [-0.9, 0, -0.2], droop: 0.08, kink: 0.7, split: false });
   // 얼굴 앞으로 흘러내리는 긴 가닥들: 눈구멍 옆을 스치며 축 늘어진다
-  addStalk({ len: 1.4, segs: 8, r: 0.08, dir: [0.9, 0, -0.5], droop: 0.32, kink: 0.35, split: true });
-  addStalk({ len: 1.1, segs: 7, r: 0.07, dir: [1.05, 0, 0.42], droop: 0.3, kink: 0.4, split: false });
+  addStalk({ len: 1.7, segs: 8, r: 0.09, dir: [0.9, 0, -0.55], droop: 0.32, kink: 0.35, split: true });
+  addStalk({ len: 1.4, segs: 7, r: 0.08, dir: [1.05, 0, 0.5], droop: 0.3, kink: 0.4, split: false });
   // 짧고 비틀린 잔가닥들
-  addStalk({ len: 0.6, segs: 4, r: 0.07, dir: [-0.6, 0, 0.9], droop: 0.1, kink: 0.9, split: false });
-  addStalk({ len: 0.5, segs: 4, r: 0.06, dir: [-0.9, 0, -0.85], droop: 0.12, kink: 0.9, split: true });
-  addStalk({ len: 0.75, segs: 5, r: 0.06, dir: [0.35, 0, -1.1], droop: 0.25, kink: 0.6, split: false });
+  addStalk({ len: 0.8, segs: 4, r: 0.08, dir: [-0.6, 0, 0.9], droop: 0.1, kink: 0.9, split: false });
+  addStalk({ len: 0.7, segs: 4, r: 0.07, dir: [-0.9, 0, -0.85], droop: 0.12, kink: 0.9, split: true });
+  addStalk({ len: 0.9, segs: 5, r: 0.07, dir: [0.35, 0, -1.15], droop: 0.25, kink: 0.6, split: false });
 
-  // ---------- 팔: 좌우 길이가 다른, 뼈만 남은 듯 가늘고 긴 팔. 손끝은 길게 뻗은 발톱 여러 개 ----------
-  const arms = [];
-  const ARM_SPECS = [
-    { s: -1, len: 1.45 },
-    { s: 1, len: 1.1 },
-  ];
-  for (const { s, len } of ARM_SPECS) {
-    const arm = new THREE.Group();
-    arm.position.set(s * 0.38, R * 0.15, 0.02);
-    const limb = mesh(new THREE.CapsuleGeometry(0.07, len, 4, 8), mBlack);
-    limb.position.y = -len / 2 - 0.075;
-    arm.add(limb);
-    // 손끝 발톱: 뼈색으로 어둠 속에서도 날카로움이 보인다
-    const handY = -len - 0.15;
-    for (let i = -2; i <= 2; i++) {
-      const claw = mesh(new THREE.ConeGeometry(0.026, 0.6, 4), mTooth);
-      claw.rotation.x = Math.PI / 2 + i * 0.17;
-      claw.position.set(i * 0.075, handY, 0.16 + Math.abs(i) * 0.035);
-      arm.add(claw);
+  // ---------- 팔: 몸통 양옆에서 밖으로 뻗었다가 팔꿈치에서 앞으로 꺾여, 검은 갈퀴 같은 손이 노미요 좌우를 감싸듯 벌어져 있다 ----------
+  // 손가락은 가늘고 긴 검은 갈퀴살 6개가 부채꼴로 펼쳐져 끝이 안쪽으로 굽었다. 가까워지면 양쪽에서 조여 들어온다.
+  const arms = []; // { shoulder, elbow, fingers:[{ knuckle }] , s }
+  function addArm(s) {
+    const shoulder = new THREE.Group();
+    shoulder.position.set(s * 0.4, 0.55, 0.05);
+    body.add(shoulder);
+    const UPPER = 1.3;
+    const upper = mesh(new THREE.CapsuleGeometry(0.085, UPPER - 0.17, 4, 8), mBlack);
+    upper.rotation.z = Math.PI / 2;
+    upper.position.x = (s * UPPER) / 2;
+    shoulder.add(upper);
+    const elbow = new THREE.Group();
+    elbow.position.x = s * UPPER;
+    shoulder.add(elbow);
+    const FORE = 1.4;
+    const fore = mesh(new THREE.CapsuleGeometry(0.07, FORE - 0.14, 4, 8), mBlack);
+    fore.rotation.x = Math.PI / 2;
+    fore.position.z = FORE / 2;
+    elbow.add(fore);
+    const hand = new THREE.Group();
+    hand.position.z = FORE;
+    elbow.add(hand);
+    // 손바닥: 세로로 선 얇은 판 — 갈퀴살이 위아래로 부채꼴 펼쳐지는 기준
+    const palm = mesh(new THREE.BoxGeometry(0.1, 0.5, 0.26), mBlack);
+    palm.position.z = 0.05;
+    hand.add(palm);
+    const fingers = [];
+    const FINGER_N = 6;
+    for (let i = 0; i < FINGER_N; i++) {
+      const t = i / (FINGER_N - 1);
+      const fan = (t - 0.5) * 1.15; // 위아래로 펼쳐진 각도
+      const root = new THREE.Group();
+      root.position.set(0, (t - 0.5) * 0.4, 0.15);
+      root.rotation.x = -fan;
+      hand.add(root);
+      const L1 = 0.6 + (0.5 - Math.abs(t - 0.5)) * 0.25; // 가운데 갈퀴살이 더 길다
+      const seg1 = mesh(new THREE.CapsuleGeometry(0.03, L1, 3, 6), mBlack);
+      seg1.rotation.x = Math.PI / 2;
+      seg1.position.z = L1 / 2;
+      root.add(seg1);
+      const knuckle = new THREE.Group(); // 여기서 안쪽으로 굽는다
+      knuckle.position.z = L1;
+      root.add(knuckle);
+      const L2 = 0.42;
+      const seg2 = mesh(new THREE.CapsuleGeometry(0.025, L2, 3, 6), mBlack);
+      seg2.rotation.x = Math.PI / 2;
+      seg2.position.z = L2 / 2;
+      knuckle.add(seg2);
+      const claw = mesh(new THREE.ConeGeometry(0.03, 0.2, 4), mBoneDark); // 끝만 뼈색 발톱
+      claw.rotation.x = Math.PI / 2;
+      claw.position.z = L2 + 0.08;
+      knuckle.add(claw);
+      fingers.push({ knuckle, curl: 0.45 + Math.random() * 0.25 });
     }
-    arm.rotation.z = s * (0.08 + Math.random() * 0.06);
-    body.add(arm);
-    arms.push(arm);
+    arms.push({ s, shoulder, elbow, fingers, seed: Math.random() * 10 });
   }
+  addArm(-1);
+  addArm(1);
+  /** 팔 자세: spread(0=평소, 1=완전히 조여 들어온 상태) */
+  function poseArms(spread, sway, jit) {
+    for (const arm of arms) {
+      const { s, shoulder, elbow, fingers } = arm;
+      shoulder.rotation.y = -s * (0.5 + spread * 0.55) + jit * 0.5; // 앞으로 감싸 들어옴
+      shoulder.rotation.z = s * (0.28 - spread * 0.1) + Math.sin(sway + arm.seed) * 0.03;
+      shoulder.rotation.x = Math.sin(sway * 0.8 + arm.seed) * 0.04 + jit * 0.6;
+      elbow.rotation.y = -s * (0.3 + spread * 0.45); // 팔꿈치에서 안쪽으로
+      elbow.rotation.x = 0.12 + Math.sin(sway * 1.3 + arm.seed) * 0.03;
+      for (const f of fingers) f.knuckle.rotation.y = s * (f.curl + spread * 0.5) + jit * 0.4; // 갈퀴살 끝이 안쪽으로 굽음
+    }
+  }
+  poseArms(0, 0, 0);
 
   // ---------- 애니메이션: 둥둥 떠서 느리게 오르내리고, 옷자락이 흔들리며, 이따금 경련한다 ----------
   // 경련 순간: 고개가 옆으로 홱 꺾이고, 턱이 덜컥 더 벌어졌다가 천천히 돌아온다
+  // 들이밀기: 노미요가 가까워지면(월드 거리 dist) 목을 쭉 뻗어 얼굴을 코앞까지 들이민다.
+  // 다가올 땐 홱 튀어나가고, 멀어지면 천천히 물러난다.
+  const LUNGE_FAR = 5.2 * scale; // 이 거리부터 서서히 고개를 내밀기 시작
+  const LUNGE_NEAR = 3.2 * scale; // 이 거리 안이면 최대로 들이민다
+  const LUNGE_OFFSET = new THREE.Vector3(0, -0.95, 1.25); // 최대 들이밀기 시 머리 이동량(body 기준)
+  let menace = 0;
+  let lungeSnapped = false;
   let time = Math.random() * 10;
   let twitch = 0;
   let headTilt = 0; // 옆으로 꺾인 고개(천천히 돌아옴)
   let jawSnap = 0; // 덜컥 벌어진 턱(천천히 돌아옴)
-  function update(dt) {
+  function update(dt, { dist = Infinity } = {}) {
     time += dt;
+    const menaceTarget = THREE.MathUtils.clamp((LUNGE_FAR - dist) / (LUNGE_FAR - LUNGE_NEAR), 0, 1);
+    const rate = menaceTarget > menace ? 7 : 1.4; // 튀어나갈 땐 빠르게, 물러날 땐 느리게
+    menace += (menaceTarget - menace) * (1 - Math.exp(-rate * dt));
+    // 들이미는 순간 한 번 덜컥: 고개가 꺾이고 턱이 벌어진다
+    if (menace > 0.45 && !lungeSnapped) {
+      lungeSnapped = true;
+      twitch = 0.2;
+      headTilt = (Math.random() < 0.5 ? -1 : 1) * 0.35;
+      jawSnap = 0.55;
+    } else if (menace < 0.2) lungeSnapped = false;
+
     twitch -= dt;
-    if (twitch <= 0 && Math.random() < dt * 0.6) {
+    if (twitch <= 0 && Math.random() < dt * (0.6 + menace * 2.5)) { // 가까울수록 경련이 잦아진다
       twitch = 0.14;
       headTilt = (Math.random() < 0.5 ? -1 : 1) * (0.25 + Math.random() * 0.2);
       jawSnap = 0.3 + Math.random() * 0.25;
     }
     headTilt *= Math.exp(-0.9 * dt);
     jawSnap *= Math.exp(-1.6 * dt);
-    const jitter = twitch > 0 ? (Math.random() - 0.5) * 0.11 : 0;
+    const jitter = (twitch > 0 ? (Math.random() - 0.5) * 0.11 : 0) * (1 + menace * 1.2);
     const breathe = Math.sin(time * 1.15) * 0.028;
     const hover = Math.sin(time * 0.7) * 0.16; // 걷지 않고 천천히 위아래로 떠다님
 
     body.position.y = BODY_Y + hover;
     body.scale.set(1 - breathe * 0.4, 1 + breathe, 1 - breathe * 0.4);
     body.rotation.z = -0.06 + Math.sin(time * 0.5) * 0.04 + jitter;
-    body.rotation.x = 0.14 + jitter * 0.4;
+    body.rotation.x = 0.14 + menace * 0.2 + jitter * 0.4; // 가까우면 몸도 앞으로 기운다
 
-    headGroup.rotation.x = HEAD_TILT + Math.sin(time * 0.65) * 0.03 + (twitch > 0 ? 0.16 : 0);
+    // 머리: 평소 위치에서 들이밀기 양만큼 앞·아래로, 고개는 더 숙여 노미요 얼굴을 정면으로 본다
+    headGroup.position.copy(HEAD_BASE).addScaledVector(LUNGE_OFFSET, menace);
+    headGroup.rotation.x = HEAD_TILT + menace * 0.45 + Math.sin(time * 0.65) * 0.03 + (twitch > 0 ? 0.16 : 0);
     headGroup.rotation.z = 0.05 + headTilt + jitter * 0.7;
+    fitNeck();
 
     // 턱: 축 늘어진 채 느리게 흔들리고, 잘게 딱딱거리며 떨린다
-    jawGroup.rotation.x = JAW_BASE - jawSnap + Math.sin(time * 0.9) * 0.05 + Math.sin(time * 23) * 0.012 + jitter * 0.5;
+    jawGroup.rotation.x = JAW_BASE - jawSnap - menace * 0.3 + Math.sin(time * 0.9) * 0.05 + Math.sin(time * 23) * (0.012 + menace * 0.02) + jitter * 0.5;
 
-    for (const [i, arm] of arms.entries()) arm.rotation.x = Math.sin(time * 1.1 + i * 2) * 0.05 + jitter * 0.6;
+    poseArms(menace, time, jitter); // 가까울수록 갈퀴 손이 양쪽에서 조여 들어온다
 
     // 옷자락: 몸 흔들림을 따라가되 아래로 갈수록 느리게, 크게 흔들려 끌리는 느낌
     robeGroup.rotation.z = Math.sin(time * 0.45) * 0.05;
@@ -356,8 +438,8 @@ export function createMonster({ scale = 1 } = {}) {
       st.base.rotation.z = st.rz + Math.sin(time * 0.9 + st.seed * 1.7) * st.amp * 0.7 + jitter * 0.5;
     }
 
-    eyeLight.intensity = 1.0 + Math.sin(time * 6) * 0.3 + (twitch > 0 ? 2.5 : 0);
+    eyeLight.intensity = 1.0 + menace * 2.5 + Math.sin(time * 6) * 0.3 + (twitch > 0 ? 2.5 : 0);
   }
 
-  return { group: root, update, eyes, height: (BODY_Y + 3.5) * scale };
+  return { group: root, update, eyes, height: (BODY_Y + 3.5) * scale }; // 대파 끝까지는 이보다 약 2 더 높다
 }

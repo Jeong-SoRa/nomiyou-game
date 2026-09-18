@@ -19,7 +19,7 @@ import { createAudio } from './systems/audio.js';
 import { createSettings } from './ui/settings.js';
 
 // 디버그용 URL 파라미터: ?world=forest, ?viadoor=1, ?keys=KeyW,ShiftLeft, ?horror=1, ?sit=1, ?stream=1|now, ?day=N, ?done=stream,recruit,
-//   ?companion=1, ?talk=1, ?cam=x,y,z, ?at=x,z, ?yaw=&dist=&height=, ?steps=N, ?gkeys=ArrowLeft, ?pickaxe=1, ?smash=1|hits|chop|statue|warn|choice|rubble|monster, ?monster=1, ?mcam=side,up,front[,aim]
+//   ?companion=1, ?talk=1, ?cam=x,y,z, ?at=x,z, ?yaw=&dist=&height=, ?steps=N, ?gkeys=ArrowLeft, ?pickaxe=1, ?smash=1|hits|chop|statue|warn|choice|rubble|monster, ?monster=1|거리, ?mcam=side,up,front[,aim]
 const params = new URLSearchParams(location.search);
 
 // ---------- 렌더러 / 씬 / 카메라 ----------
@@ -709,7 +709,7 @@ function updateMonsters(dt) {
     const dz = fox.group.position.z - m.char.group.position.z;
     m.heading = lerpAngle(m.heading, Math.atan2(dx, dz), 1 - Math.exp(-2 * dt));
     m.char.group.rotation.y = m.heading;
-    m.char.update(dt);
+    m.char.update(dt, { dist: Math.hypot(dx, dz) }); // 가까워지면 얼굴을 들이민다
   }
 }
 function showEnding(kind) {
@@ -1011,9 +1011,10 @@ if (params.has('smash') && world.props) {
 // ?monster=1 : 노미요 앞에 숲의 괴물을 세워 놓고 시작 (모델 확인용)
 let camLocked = false; // 디버그(?mcam): 카메라가 노미요를 따라가지 않고 고정
 if (params.has('monster')) {
+  const dist = parseFloat(params.get('monster')) || 6; // ?monster=4 처럼 거리 지정 가능 (들이밀기 확인용)
   const pos = fox.group.position.clone();
-  pos.x += Math.sin(foxState.heading) * 6;
-  pos.z += Math.cos(foxState.heading) * 6;
+  pos.x += Math.sin(foxState.heading) * dist;
+  pos.z += Math.cos(foxState.heading) * dist;
   const rec = spawnMonster(pos, foxState.heading + Math.PI);
   // ?mcam=side,up,front : 괴물 기준(정면 방향 기준) 상대 위치에 카메라를 두고 괴물 얼굴을 바라봄 (모델 확인용)
   if (params.has('mcam')) {
