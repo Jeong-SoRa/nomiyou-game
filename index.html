@@ -7,19 +7,6 @@
     <style>
       html, body { margin: 0; height: 100%; overflow: hidden; background: #0a0c14; }
       canvas { display: block; }
-      #hud {
-        position: fixed; left: 16px; top: 16px; padding: 12px 16px;
-        color: #e8e6df; font: 13px/1.6 system-ui, -apple-system, "Malgun Gothic", sans-serif;
-        background: rgba(10, 12, 20, 0.72); border: 1px solid rgba(255,255,255,0.12);
-        border-radius: 10px; backdrop-filter: blur(6px); user-select: none;
-      }
-      #hud b { color: #ffb070; }
-      #hud .row { display: flex; gap: 10px; }
-      #hud kbd {
-        display: inline-block; min-width: 18px; text-align: center; padding: 0 5px;
-        border: 1px solid rgba(255,255,255,0.3); border-bottom-width: 2px; border-radius: 4px;
-        font: 12px monospace; color: #fff; background: rgba(255,255,255,0.06);
-      }
       #mode { z-index: 10; position: fixed; right: 16px; top: 16px; padding: 8px 14px; border-radius: 999px;
         color: #ffb070; font: 600 13px system-ui, sans-serif; letter-spacing: 0.04em;
         background: rgba(10, 12, 20, 0.72); border: 1px solid rgba(255,176,112,0.4); }
@@ -134,7 +121,7 @@
       #ending .endTitle { font-size: 40px; font-weight: 700; letter-spacing: 0.2em; margin-bottom: 18px; }
       #ending .endChat { font-size: 13px; opacity: 0.8; }
       #ending .endHint { margin-top: 26px; font-size: 13px; opacity: 0.7; }
-      body.ingame #hud, body.ingame #prompt { display: none; }
+      body.ingame #prompt { display: none; }
       body.ingame #chatLog { bottom: auto; top: 150px; max-height: 48vh; background: rgba(10,12,20,0.55); }
       #settingsBtn { z-index: 11; position: fixed; right: 16px; top: 96px; width: 34px; height: 34px; border-radius: 999px; cursor: pointer;
         color: #e8e6df; font-size: 18px; line-height: 1; background: rgba(10,12,20,0.6); border: 1px solid rgba(255,255,255,0.14); }
@@ -172,13 +159,6 @@
     </style>
   </head>
   <body>
-    <div id="hud">
-      <div><b>노미요</b>(여우) 이동 <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / 방향키 · 달리기 <kbd>Shift</kbd></div>
-      <div>상호작용 <kbd>E</kbd> — 데스크: 방송 · 침대: 잠자기(하루 넘김) · 파닥이: 말 걸기 · 숲의 물건 조사 · 문으로 걸어가면 밖으로 나감</div>
-      <div>게임 중: 방향키 이동 · <kbd>E</kbd> 조사/대화 · <kbd>Esc</kbd> 접속 종료</div>
-      <div>노미요 표정 <kbd>F</kbd> · <b>파닥이</b>(병아리) 표정 <kbd>G</kbd> · 공포 모드 <kbd>H</kbd></div>
-      <div>카메라: 마우스 드래그 회전 · 휠 줌 · 설정(음량) <kbd>O</kbd> · 음소거 <kbd>M</kbd></div>
-    </div>
     <div id="mode">HOME</div>
     <div id="day">DAY 1</div>
     <div id="scareFlash"></div>

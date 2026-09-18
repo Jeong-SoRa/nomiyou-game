@@ -312,8 +312,10 @@ export function createFox() {
 
     // 왼팔은 평소 걷기 스윙, 곡괭이질 중에는 들어올렸다가 내리찍는 동작으로 대체 (기본 벌어짐 각도 -0.25 유지)
     if (frozenChopK !== null || chopT > 0 || chopWind > 0 || chopStrike > 0) {
-      arms[0].rotation.x = THREE.MathUtils.lerp(0, 2.1, chopWind) - chopStrike * 3.5;
-      arms[0].rotation.z = -0.25 + chopWind * 0.4 - chopStrike * 0.3;
+      // 준비 동작: 팔이 앞으로 들려 올라가며 머리 위까지 곡괭이를 든다 (0 → -π, 뒤가 아니라 앞쪽 호를 그대로 지나 위로).
+      // 타격: 같은 앞쪽 호를 되짚어 내려오며 앞으로 살짝 기울어진 채 내리찍는다 (-π → -0.3).
+      arms[0].rotation.x = -Math.PI * chopWind + (Math.PI - 0.3) * chopStrike;
+      arms[0].rotation.z = -0.25 + chopWind * 0.15 - chopStrike * 0.1;
     } else {
       arms[0].rotation.x = -swing * 0.6;
       arms[0].rotation.z = -0.25;

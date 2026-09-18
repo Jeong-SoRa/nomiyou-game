@@ -525,58 +525,67 @@ function gatherChicks(p, { teleport = false } = {}) {
 let crateHits = 0;
 let hitCooldown = 0; // 연타 방지 (ms 타임스탬프)
 const HIT_LINES = { 1: '...부순다!', 2: '하압!', 3: '...갈라진다.', 4: '조금만 더!', 5: '거의 다 됐어!' };
+/** 노미요가 해당 지점을 바라보게 (상자를 등지고 있다가 쳐도 이상해 보이지 않도록) */
+function faceTarget(pos) {
+  foxState.heading = Math.atan2(pos.x - fox.group.position.x, pos.z - fox.group.position.z);
+}
+// 곡괭이를 들어 준비하는 동작(chop 의 windup)이 끝나고 내리찍어 상자에 닿는 순간에만 효과가 나야 하므로,
+// 타격 효과(소리·흔들림·틈 갈라짐/파사삭)는 chop() 과 같은 길이만큼 지연시켜 스윙이 끝나는 순간에 맞춘다.
 function hitCrate() {
   if (!hasCompanion()) return fox.say('...혼자서는 안 된다고 했어.', 2.4);
   if (!hasPickaxe) return fox.say('곡괭이가 있어야 해.', 2.2);
   const now = performance.now();
   if (now < hitCooldown) return;
-  hitCooldown = now + 420;
   const p = world.props.crate;
   crateHits++;
-  audio.sfx.smash();
-  scare.trigger({ shake: 0.35 + crateHits * 0.06, flash: false, sound: false });
-  if (crateHits >= p.HITS) return finalSmash();
-  fox.chop();
-  p.hit(crateHits);
-  if (HIT_LINES[crateHits]) fox.say(HIT_LINES[crateHits], 1.1);
-  const buddy = chicks.find((c) => c.follow);
-  if (buddy && crateHits === 3) {
-    buddy.char.say('조금 더!', 1.2);
-    audio.sfx.babble(4);
-  }
+  const isLast = crateHits >= p.HITS;
+  const dur = isLast ? 0.62 : 0.48; // 마지막 타격은 조금 더 크게 휘두른다
+  hitCooldown = now + dur * 1000 + 60;
+  faceTarget(p.group.position);
+  fox.chop(dur);
+  setTimeout(() => {
+    if (isLast) return finalSmash();
+    audio.sfx.smash();
+    scare.trigger({ shake: 0.35 + crateHits * 0.06, flash: false, sound: false });
+    p.hit(crateHits);
+    if (HIT_LINES[crateHits]) fox.say(HIT_LINES[crateHits], 1.1);
+    const buddy = chicks.find((c) => c.follow);
+    if (buddy && crateHits === 3) {
+      buddy.char.say('조금 더!', 1.2);
+      audio.sfx.babble(4);
+    }
+  }, dur * 1000);
 }
 function finalSmash() {
   const p = world.props.crate;
   crateOpened = true;
+  // 여기 도착한 시점이 곧 곡괭이가 상자에 닿는 순간이므로(hitCrate 에서 스윙 길이만큼 이미 지연시킴) 바로 터뜨린다
+  audio.sfx.shatter();
+  scare.trigger({ shake: 1.0, flash: false, sound: false });
+  p.smash();
+  fox.setTool(false); // 곡괭이는 이제 쓸모를 다했다
   fox.say('...!', 0.9);
-  fox.chop(0.62); // 마지막 타격은 조금 더 크게 휘두른다
+  const all = gatherChicks(p);
   setTimeout(() => {
-    audio.sfx.shatter();
-    scare.trigger({ shake: 1.0, flash: false, sound: false });
-    p.smash();
-    fox.setTool(false); // 곡괭이는 이제 쓸모를 다했다
-    const all = gatherChicks(p);
-    setTimeout(() => {
-      fox.setExpression('dot');
-      sayLines(fox, ['...이게 뭐야.', "'좋아요' 버튼...? 석상이야."], () => {
-        // 파닥이들의 아우성 (약 5초)
-        const start = performance.now();
-        const clamor = (k) => {
-          if (performance.now() - start > 5200) return;
-          const c = all[k % all.length];
-          const text = CLAMOR_LINES[k % CLAMOR_LINES.length];
-          c.char.setExpression('stern');
-          c.char.say(text, 1.6, { scare: true });
-          audio.sfx.babble(text.length, { base: 520, spread: 420, rate: 0.045 });
-          clamorTimers.push(setTimeout(() => clamor(k + 1), 380));
-        };
-        clamor(0);
-        if (!horror) scare.trigger({ shake: 0.3, flash: false, sound: false });
-        // 아우성 한창일 때: 화면이 지직거리며 시뻘건 시스템 경고창이 튀어나온다
-        clamorTimers.push(setTimeout(systemWarning, 3400));
-      });
-    }, 1500);
-  }, 250);
+    fox.setExpression('dot');
+    sayLines(fox, ['...이게 뭐야.', "'좋아요' 버튼...? 석상이야."], () => {
+      // 파닥이들의 아우성 (약 5초)
+      const start = performance.now();
+      const clamor = (k) => {
+        if (performance.now() - start > 5200) return;
+        const c = all[k % all.length];
+        const text = CLAMOR_LINES[k % CLAMOR_LINES.length];
+        c.char.setExpression('stern');
+        c.char.say(text, 1.6, { scare: true });
+        audio.sfx.babble(text.length, { base: 520, spread: 420, rate: 0.045 });
+        clamorTimers.push(setTimeout(() => clamor(k + 1), 380));
+      };
+      clamor(0);
+      if (!horror) scare.trigger({ shake: 0.3, flash: false, sound: false });
+      // 아우성 한창일 때: 화면이 지직거리며 시뻘건 시스템 경고창이 튀어나온다
+      clamorTimers.push(setTimeout(systemWarning, 3400));
+    });
+  }, 1500);
 }
 function systemWarning() {
   glitchEl.classList.remove('on');
