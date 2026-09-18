@@ -122,7 +122,9 @@
       #ending .endChat { font-size: 13px; opacity: 0.8; }
       #ending .endHint { margin-top: 26px; font-size: 13px; opacity: 0.7; }
       body.ingame #prompt { display: none; }
-      body.ingame #chatLog { bottom: auto; top: 150px; max-height: 48vh; background: rgba(10,12,20,0.55); }
+      /* 게임 중: 채팅을 화면 맨 위 오른쪽에 낮게(13vh) 붙이고 스크롤바 없이 최신 메시지만 보이게. 위쪽 알약(모드/날짜)은 채팅 왼쪽으로 비켜 준다 */
+      body.ingame #chatLog { bottom: auto; top: 12px; max-height: 13vh; overflow-y: hidden; background: rgba(10,12,20,0.55); }
+      body.ingame #mode, body.ingame #day { right: 352px; }
       #settingsBtn { z-index: 11; position: fixed; right: 16px; top: 96px; width: 34px; height: 34px; border-radius: 999px; cursor: pointer;
         color: #e8e6df; font-size: 18px; line-height: 1; background: rgba(10,12,20,0.6); border: 1px solid rgba(255,255,255,0.14); }
       #settingsBtn:hover { border-color: rgba(255,176,112,0.6); color: #ffb070; }
