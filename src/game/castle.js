@@ -34,13 +34,13 @@ const DIARY_TEXT = '오늘도 %#$을 봤다. 재미있었다. #@독 버튼을 �
 const MAP = [
   '##############################',
   '#T...T#T....T.....T#T...T...T#',
-  '#W...J#W...........#.........#',
+  '#W...J#............#.........#',
   '#..b..#............#....E....#',
   '#..C..1............#.........#',
   '#.....#............#.........#',
   '###X###............#####2#####',
   '#T...T#.....C......#T...T...T#',
-  '#W....#...........W#........W#',
+  '#W....#............#........W#',
   '#..................#.........#',
   '#.....#.....P......#.........#',
   '#.....#............#.........#',
@@ -50,7 +50,7 @@ const MAP = [
   '#.....#............#.........#',
   '#..N..#............#....C....#',
   '#..................#.........#',
-  '#.....#.W..........#.........#',
+  '#.....#............#.........#',
   '#..C..#............#....N....#',
   '#T...T#............#T.......T#',
   '##############################',
@@ -209,6 +209,10 @@ export function createCastleGame({ canvas, onEvent = () => {} }) {
     active = true;
     keys.clear();
     if (o.skipIntro) introSeen = true; // 디버그
+    if (o.at) { // 디버그(?gat=x,y): 시작 좌표 지정
+      player.x = player.px = player.fromX = o.at[0];
+      player.y = player.py = player.fromY = o.at[1];
+    }
     if (!introSeen) {
       introSeen = true;
       say('', INTRO_LINES, { onDone: () => (toast = { text: '방향키로 이동 · E 조사', timer: 4 }) });
@@ -248,6 +252,12 @@ export function createCastleGame({ canvas, onEvent = () => {} }) {
   }
   function keyup(code) {
     keys.delete(code);
+  }
+  /** 마우스 클릭: 대화 넘기기 / 방송 끄기 버튼 (E 와 동일) */
+  function click() {
+    if (!active) return;
+    if (state === 'dialog') advanceDialog();
+    else if (state === 'closing') onEvent('exit');
   }
   function heldDir() {
     if (keys.has('ArrowUp') || keys.has('KeyW')) return 'up';
@@ -973,6 +983,7 @@ export function createCastleGame({ canvas, onEvent = () => {} }) {
       ctx.drawImage(canvas, 0, gy, CANVAS_W, gh, (Math.random() - 0.5) * 20, gy, CANVAS_W, gh);
     }
 
+    drawWardrobePrompt(ox, oy);
     drawHud();
     if (dialog) drawDialog();
     if (toast) {
@@ -984,10 +995,41 @@ export function createCastleGame({ canvas, onEvent = () => {} }) {
       ctx.fillStyle = '#ffe9c9';
       ctx.fillText(toast.text, CANVAS_W / 2, 57);
     }
-    if (state === 'closing') drawButton('E · 방송 끄기');
+    if (state === 'closing') drawButton('E · 방송 끄기 (클릭)');
     if (state === 'over' && !dialog) drawGameOver();
     if (scareFx > 0) drawScare();
     if (staticFx > 0) drawStatic();
+  }
+
+  /** 옷장 앞에 서 있으면(또는 숨어 있으면) 옷장 위에 E 안내를 띄운다 */
+  function drawWardrobePrompt(ox, oy) {
+    if (state !== 'play') return;
+    let wx, wy, text;
+    if (hidden) {
+      wx = hidden.wx;
+      wy = hidden.wy;
+      text = 'E  옷장에서 나오기';
+    } else {
+      const [dx, dy] = DIRS[player.dir];
+      const tx = player.x + dx;
+      const ty = player.y + dy;
+      if (at(tx, ty) !== 'W') return;
+      wx = tx;
+      wy = ty;
+      text = 'E  옷장에 숨기';
+    }
+    const cx = ox + wx * TILE + TILE / 2;
+    const top = oy + wy * TILE - 22 + Math.sin(time * 4) * 1.5;
+    ctx.font = 'bold 12px "Malgun Gothic", system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    const tw = ctx.measureText(text).width + 16;
+    ctx.fillStyle = 'rgba(8,8,18,0.85)';
+    ctx.fillRect(cx - tw / 2, top - 15, tw, 20);
+    ctx.strokeStyle = '#ffb070';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(cx - tw / 2 + 0.5, top - 14.5, tw - 1, 19);
+    ctx.fillStyle = '#ffe9c9';
+    ctx.fillText(text, cx, top);
   }
 
   // 괴물 등장 연출: 화면 가득한 검은 실루엣 + 붉은 눈 (두둥)
@@ -1125,7 +1167,7 @@ export function createCastleGame({ canvas, onEvent = () => {} }) {
       ctx.fillStyle = '#ffb070';
       ctx.font = '12px monospace';
       ctx.textAlign = 'right';
-      ctx.fillText('▼ E', bx + bw - 12, by + bh - 10);
+      ctx.fillText('▼ E / 클릭', bx + bw - 12, by + bh - 10);
     }
   }
 
@@ -1135,6 +1177,7 @@ export function createCastleGame({ canvas, onEvent = () => {} }) {
     update,
     render,
     keydown,
+    click,
     keyup,
     isActive: () => active,
     getState: () => state,

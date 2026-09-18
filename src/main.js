@@ -19,7 +19,7 @@ import { createAudio } from './systems/audio.js';
 import { createSettings } from './ui/settings.js';
 
 // 디버그용 URL 파라미터: ?world=forest, ?viadoor=1, ?keys=KeyW,ShiftLeft, ?horror=1, ?sit=1, ?stream=1|now, ?day=N, ?done=stream,recruit,
-//   ?companion=1, ?talk=1, ?cam=x,y,z, ?at=x,z, ?yaw=&dist=&height=, ?steps=N, ?gkeys=ArrowLeft, ?pickaxe=1, ?smash=1|hits|chop|statue|warn|choice|rubble|monster, ?monster=1|거리, ?mcam=side,up,front[,aim]
+//   ?companion=1, ?talk=1, ?cam=x,y,z, ?at=x,z, ?yaw=&dist=&height=, ?steps=N, ?gkeys=ArrowLeft, ?gat=x,y, ?pickaxe=1, ?smash=1|hits|chop|statue|warn|choice|rubble|monster, ?monster=1|거리, ?mcam=side,up,front[,aim]
 const params = new URLSearchParams(location.search);
 
 // ---------- 렌더러 / 씬 / 카메라 ----------
@@ -779,6 +779,12 @@ const streamSim = createStreamSim({
 let reactExprTimeout = 0;
 
 const gameScreen = createGameScreen();
+// 게임 화면 클릭: 대화 넘기기 (E 와 동일)
+gameScreen.canvas.addEventListener('pointerdown', (e) => {
+  if (e.button !== 0) return;
+  audio.unlock();
+  if (castle.isActive()) castle.click();
+});
 const INTRO_LINE = '미요미요! 파닥이들 안녕. 오늘 할 게임은 미스터리 고성탈출! 수팀 평가 압긍이구요. 기대되네요. 시작할게요!';
 const INTRO_SECONDS = 5.5;
 let introReady = false; // 오프닝 멘트가 끝나 E 로 방송 화면에 들어갈 수 있는 상태
@@ -863,7 +869,7 @@ function enterGame() {
     chatLog.setVisible(true);
     gameScreen.setVisible(true);
     gameScreen.setStatus('접속 중...');
-    castle.start({ tier: tierIndexForDay(day, { horror }), presence: presenceFor(day), monster: day >= 2 || horror, skipIntro: params.has('nointro') });
+    castle.start({ tier: tierIndexForDay(day, { horror }), presence: presenceFor(day), monster: day >= 2 || horror, skipIntro: params.has('nointro'), at: params.has('gat') ? params.get('gat').split(',').map(Number) : null });
     for (const k of (params.get('gkeys') || '').split(',')) if (k) castle.keydown(k); // 디버그: 게임 키 누른 상태로 시작
     streamSim.reset();
     streamTime = 0;
