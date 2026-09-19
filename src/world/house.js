@@ -8,6 +8,7 @@ import {
   pawTexture,
   clockFaceTexture,
   chatSignTexture,
+  chatBoardTexture,
   screenTexture,
   nightSkyTexture,
   morningSkyTexture,
@@ -339,10 +340,12 @@ export function createHouse() {
     chair.add(spoke, wheel);
   }
 
-  // ---------- CHAT 칠판 (벽에 부착, 작게) ----------
+  // ---------- CHAT 채팅 보드 (침대 머리맡 위 벽에 부착) ----------
+  // 진엔딩 에필로그에서 현실로 돌아간 구독자들의 메시지가 여기 분필로 적힌다 (board.setLines / reveal)
   const backZ = -D / 2 + 0.02;
+  const BOARD = { x: 8.3, y: 4.7 };
   const board = new THREE.Group();
-  board.position.set(3.2, 4.9, backZ);
+  board.position.set(BOARD.x, BOARD.y, backZ);
   group.add(board);
   const boardFrame = rbox(3.4, 2.5, 0.14, mOrange, 0.08);
   boardFrame.position.z = 0.07;
@@ -361,6 +364,26 @@ export function createHouse() {
   );
   chatSign.position.set(0, 1.45, 0.16);
   board.add(chatSign);
+  const boardMsg = new THREE.Mesh(new THREE.PlaneGeometry(3.0, 2.14), new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false }));
+  boardMsg.position.set(0, 0, 0.19);
+  boardMsg.visible = false;
+  board.add(boardMsg);
+  let boardLines = [];
+  function drawBoard(shown) {
+    if (boardMsg.material.map) boardMsg.material.map.dispose();
+    boardMsg.material.map = chatBoardTexture(boardLines, shown);
+    boardMsg.material.needsUpdate = true;
+    boardMsg.visible = shown > 0;
+  }
+  /** 보드에 적힌 메시지 전체를 정한다 (즉시 모두 보임) */
+  function setBoardLines(lines) {
+    boardLines = lines;
+    drawBoard(lines.length);
+  }
+  /** 앞에서 n 줄만 보이게 (한 줄씩 적히는 연출용) */
+  function revealBoard(n) {
+    drawBoard(Math.max(0, Math.min(boardLines.length, n)));
+  }
 
   // ---------- 침대 (오른쪽 뒤 구석) ----------
   const BED = { x: 8.3, z: -5.3, w: 3.6, l: 5.4 };
@@ -464,7 +487,7 @@ export function createHouse() {
 
   // 벽시계
   const clock = new THREE.Group();
-  clock.position.set(8.3, 6.6, backZ + 0.08);
+  clock.position.set(3.2, 6.2, backZ + 0.08); // 채팅 보드가 침대 위로 옮겨가서 시계는 그 자리(왼쪽)로
   group.add(clock);
   const clockBody = mesh(new THREE.CylinderGeometry(0.8, 0.8, 0.12, 40), mDark);
   clockBody.rotation.x = Math.PI / 2;
@@ -696,6 +719,16 @@ export function createHouse() {
       approach: new THREE.Vector3(CHAIR.x, 0, CHAIR.z + 1.9),
       radius: 2.6,
       prompt: new THREE.Vector3(CHAIR.x, 2.7, CHAIR.z + 0.3),
+    },
+    // 침대 위 채팅 보드: 침대 발치 앞에 서면 E 로 들여다보기 (진엔딩 에필로그). position 은 보드 가운데
+    board: {
+      position: new THREE.Vector3(BOARD.x, BOARD.y, backZ),
+      approach: new THREE.Vector3(BED.x, 0, BED.z + BED.l / 2 + 1.5),
+      radius: 2.0,
+      prompt: new THREE.Vector3(BOARD.x, BOARD.y - 1.6, backZ + 0.3),
+      setLines: setBoardLines,
+      reveal: revealBoard,
+      lineCount: () => boardLines.length,
     },
     // 침대: 옆에서 E 를 누르면 잠자기 (하루가 지남). 할 일이 남았으면 안내만
     bed: {

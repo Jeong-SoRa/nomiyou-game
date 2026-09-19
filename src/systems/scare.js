@@ -5,7 +5,8 @@ import * as THREE from 'three';
  * - trigger(): 연출 시작 (키 입력 핸들러 안에서 호출해야 오디오가 재생됨)
  * - undoShake(camera) 를 프레임 시작에, applyShake(camera, dt) 를 렌더 직전에 호출
  */
-export function createScare({ flashEl } = {}) {
+export function createScare({ flashEl, silent = false } = {}) {
+  // silent: 효과음 생략 (헤드리스 스크린샷 테스트용 — 사용자 입력 없이 AudioContext 를 만들면 헤드리스 크롬이 멈춘다)
   let timer = 0;
   let duration = 0.7;
   const offset = new THREE.Vector3();
@@ -30,6 +31,7 @@ export function createScare({ flashEl } = {}) {
 
   /** 문 두드리는 소리: 둔탁한 저음 쿵쿵 × count */
   function knock({ count = 4, gap = 0.22, volume = 0.8 } = {}) {
+    if (silent) return;
     try {
       const a = ctx();
       for (let i = 0; i < count; i++) {
@@ -63,6 +65,7 @@ export function createScare({ flashEl } = {}) {
 
   /** 비명: 높은 톤이 흔들리며 내려오는 소리 + 노이즈 */
   function scream({ seconds = 1.8 } = {}) {
+    if (silent) return;
     try {
       const a = ctx();
       const t0 = a.currentTime;
@@ -99,6 +102,7 @@ export function createScare({ flashEl } = {}) {
   }
 
   function playStab() {
+    if (silent) return;
     try {
       audio ??= new (window.AudioContext || window.webkitAudioContext)();
       if (audio.state === 'suspended') audio.resume();

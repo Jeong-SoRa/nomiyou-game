@@ -19,7 +19,8 @@ import { createAudio } from './systems/audio.js';
 import { createSettings } from './ui/settings.js';
 
 // 디버그용 URL 파라미터: ?world=forest, ?viadoor=1, ?keys=KeyW,ShiftLeft, ?horror=1, ?sit=1, ?stream=1|now, ?day=N, ?done=stream,recruit,
-//   ?companion=1, ?talk=1, ?cam=x,y,z, ?at=x,z, ?yaw=&dist=&height=, ?steps=N, ?gkeys=ArrowLeft, ?gat=x,y[,dir], ?ginv=cup,cupWater,a,b, ?water=1, ?pickaxe=1, ?smash=1|hits|chop|statue|warn|choice|rubble|monster, ?monster=1|거리, ?mcam=side,up,front[,aim]
+//   ?companion=1, ?talk=1, ?cam=x,y,z, ?at=x,z, ?yaw=&dist=&height=, ?steps=N, ?gkeys=ArrowLeft, ?gat=x,y[,dir], ?ginv=cup,cupWater,a,b, ?water=1, ?pickaxe=1, ?smash=1|hits|chop|statue|warn|choice|rubble|monster, ?monster=1|거리, ?mcam=side,up,front[,aim],
+//   ?ending=bad|true (분기 직후 인게임 장면부터), ?epilogue=1 (진엔딩 에필로그 방부터, &board=1 이면 바로 보드 줌인), ?credits=true|bad, ?noopen=1 (오프닝 인사 생략)
 const params = new URLSearchParams(location.search);
 
 // ---------- 렌더러 / 씬 / 카메라 ----------
@@ -51,6 +52,8 @@ const choiceEl = document.getElementById('choice');
 const endingEl = document.getElementById('ending');
 const glitchEl = document.getElementById('glitch');
 const sysWarnEl = document.getElementById('sysWarn');
+const fadeWhiteEl = document.getElementById('fadeWhite');
+const bangEl = document.getElementById('bang');
 
 // ---------- 캐릭터 ----------
 const fox = createFox({ phone: false }); // 이 게임에선 노미요가 폰을 들지 않는다 (캐릭터 설정은 유지, 플래그로만 숨김)
@@ -92,6 +95,7 @@ function presenceFor(d) {
 }
 // 날짜에 따른 으스스함 (4일차부터 방/숲이 붉고 어두워지며 7일차에 최대). 공포 모드(H)면 1
 function dreadFor(d) {
+  if (epilogue) return 0; // 진엔딩 에필로그: 파닥이들이 돌아간 뒤의 방은 더 이상 붉지 않다
   return d >= 4 ? Math.min(1, (d - 3) * 0.25) : 0;
 }
 // 숲의 시간대: 1~3일차 밝은 아침(1) → 4일차 해질녘 → 5일차부터 밤(0). 공포 모드면 밤
@@ -109,6 +113,10 @@ function modeLabel() {
 }
 // 방송(구독 이벤트)으로 생성된 파닥이 — 월드 전환 후에도 유지되도록 별도 추적
 let sessionChicks = []; // [{ worldName, position: Vector3, scale }]
+// 엔딩 상태 (초기 loadWorld/dreadFor 에서도 읽으므로 여기서 선언)
+let cutscene = false; // 엔딩 연출 중: 이동·상호작용·키 입력 잠금
+let epilogue = false; // 진엔딩 에필로그(방): 파닥이 없는 방에서 채팅 보드를 보고 잠들면 끝
+let boardRead = false; // 에필로그에서 채팅 보드를 들여다봤는지
 let collectedHints = new Set();
 
 // ---------- 월드 로딩 / 전환 ----------
@@ -148,7 +156,7 @@ function loadWorld(name, { viaDoor = false } = {}) {
   doorArmed = false;
 
   chicks = [];
-  world.chickSpawns.forEach((pos, i) => addChick(pos, chickScales[i % chickScales.length]));
+  if (!epilogue) world.chickSpawns.forEach((pos, i) => addChick(pos, chickScales[i % chickScales.length])); // 에필로그의 방엔 파닥이가 없다
   // 방송으로 생성된 파닥이 복원 (이 월드에 속한 것만)
   for (const rec of sessionChicks.filter((r) => r.worldName === name)) addChick(rec.position, rec.scale);
   // 동행 파닥이는 노미요 옆에서 다시 시작
@@ -263,6 +271,7 @@ window.addEventListener('keydown', (e) => {
     if (e.code === 'KeyR') location.reload();
     return;
   }
+  if (cutscene) return; // 엔딩 연출 중: 소리 관련 키(M/O) 말고는 무시
   if (choiceOpen) {
     if (e.code === 'Digit1' || e.code === 'Numpad1') resolveChoice('release');
     if (e.code === 'Digit2' || e.code === 'Numpad2') resolveChoice('keep');
@@ -352,12 +361,13 @@ function nearestChick() {
  * 우선순위: 방송 화면 진입 대기 > 데스크 > 침대 > 숲 소품 > 파닥이
  */
 function currentAction() {
-  if (transitioning || choiceOpen || ending || crateOpened) return null;
+  if (transitioning || choiceOpen || ending || crateOpened || cutscene) return null;
   if (streaming && introReady && !castle.isActive()) {
     return { label: '계속하기', at: tmpPrompt.copy(fox.group.position).setY(3.4), run: enterGame };
   }
   if (!walking()) return null;
-  if (near(world.computer)) return { label: '게임 방송 시작', at: world.computer.prompt, run: startStreaming };
+  if (near(world.computer) && !epilogue) return { label: '게임 방송 시작', at: world.computer.prompt, run: startStreaming };
+  if (epilogue && !boardRead && near(world.board)) return { label: '채팅 보드 보기', at: world.board.prompt, run: viewBoard };
   if (near(world.bed)) return { label: '잠자기', at: world.bed.prompt, run: trySleep };
   if (near(world.plant) && performance.now() >= busyUntil) return { label: '물주기', at: world.plant.prompt, run: waterPlant };
   const p = world.props;
@@ -383,6 +393,31 @@ function interact() {
   const a = currentAction();
   if (a) a.run();
 }
+// ---------- 오프닝: 게임을 처음 시작하면 파닥이가 인사한다 ----------
+const OPENING_LINES = ['안녕 노미요. 오늘도 좋은 하루야.', '재미있는 방송 기대할게.'];
+function playOpening() {
+  let c = null;
+  let best = Infinity;
+  for (const r of chicks) {
+    const d = r.char.group.position.distanceTo(fox.group.position);
+    if (d < best) {
+      best = d;
+      c = r;
+    }
+  }
+  if (!c) return;
+  const g = c.char.group;
+  c.wait = 99; // 인사하는 동안은 돌아다니지 않는다
+  c.heading = Math.atan2(fox.group.position.x - g.position.x, fox.group.position.z - g.position.z);
+  faceTarget(g.position);
+  sayLines(c.char, OPENING_LINES, () => {
+    c.wait = rand(1, 3);
+    fox.setExpression('happy');
+    fox.say('응! 오늘도 잘 부탁해.', 2.0);
+    setTimeout(() => fox.setExpression('dot'), 2000);
+  });
+}
+
 // ---------- 화분 물주기 (창문 옆 큰 화분) ----------
 let busyUntil = 0; // 짧은 동작(물주기) 중에는 이동/상호작용 금지 (ms 타임스탬프)
 const WATER_LINES = ['물 먹고 쑥쑥 자라라~', '오늘도 싱싱하네.', '잎이 반짝반짝해졌다.', '...너는 참 조용해서 좋아.'];
@@ -394,11 +429,11 @@ function waterPlant(dur = 1.6) {
   faceTarget(p.position);
   fox.water(dur);
   p.water(() => fox.spoutWorld(tmpWaterDir), dur); // 물은 물뿌리개 주둥이(월드 좌표)에서 나온다
-  audio.sfx.water();
+  audio.sfx.water(dur);
   setTimeout(() => fox.say(WATER_LINES[Math.floor(Math.random() * WATER_LINES.length)], 1.9), dur * 1000 - 200);
 }
 
-const scare = createScare({ flashEl: document.getElementById('scareFlash') });
+const scare = createScare({ flashEl: document.getElementById('scareFlash'), silent: params.has('silent') }); // ?silent=1: 스케어 효과음 생략 (헤드리스 테스트)
 
 // 동행 요청 대사 (recruit): 날짜별
 const RECRUIT_LINES = {
@@ -511,7 +546,7 @@ function takePickaxe() {
 
 // ---------- 7일차: 상자를 부수다 → 석상 → 분기 ----------
 let choiceOpen = false;
-let ending = null;
+let ending = null; // 엔딩 크레딧 표시 중 ('true' | 'bad'). R 만 받는다
 // 파닥이들이 석상을 부숴 달라고 외치는 말 (돌아가며 반복)
 const CLAMOR_LINES = ['부숴줘!!', '빨리 부숴!', '노미요, 그거 부숴줘!!', '지금! 지금 부숴!!', '제발 부숴줘!!', '그게 우릴 붙잡고 있어!!'];
 let clamorTimers = [];
@@ -643,9 +678,10 @@ function resolveChoice(which) {
   choiceOpen = false;
   choiceEl.classList.remove('on');
   plan.complete('escape');
+  cutscene = true;
   const p = world.props.crate;
   if (which === 'release') {
-    // 부순다: 석상이 무너지고 파닥이들이 빛이 되어 돌아간다. 노미요는 혼자 남는다 → 진엔딩
+    // 부순다: 석상이 무너지고 파닥이들이 "드디어..." 하며 흰빛과 함께 한 명씩 사라진다 → 흰 화면 → 인게임 장면 → 에필로그
     sysWarnEl.classList.remove('dock');
     fox.say('...미안. 그래도 부술게.', 2.2);
     setTimeout(() => {
@@ -655,24 +691,24 @@ function resolveChoice(which) {
       for (const c of chicks) c.char.setExpression('happy');
       setTimeout(() => {
         audio.sfx.sleep();
-        for (const c of chicks) c.char.say('고마워.', 1.6);
-        audio.sfx.babble(4);
-        // 파닥이들이 점점 작아지며 사라짐
-        const t0 = performance.now();
-        for (const c of chicks) c.baseScale = c.char.group.scale.x;
-        const shrink = () => {
-          const k = Math.max(0, 1 - (performance.now() - t0) / 1600);
-          for (const c of chicks) c.char.group.scale.setScalar(c.baseScale * k + 0.0001);
-          if (k > 0) requestAnimationFrame(shrink);
-          else for (const c of chicks) c.char.group.visible = false;
-        };
-        setTimeout(shrink, 1200);
-        setTimeout(() => fox.say('...조용하네.', 2.4), 2900);
-        setTimeout(() => showEnding('true'), 5200);
+        const all = [...chicks];
+        all.forEach((c, i) => {
+          setTimeout(() => {
+            c.char.say('드디어...', 1.4);
+            audio.sfx.babble(4);
+            setTimeout(() => {
+              whiteLight(c.char.group.position, c.char.group.scale.x);
+              c.char.group.visible = false;
+            }, 650);
+          }, i * 550);
+        });
+        const doneAt = all.length * 550 + 1500;
+        setTimeout(() => fox.say('...다들, 갔구나.', 2.2), doneAt - 900);
+        setTimeout(trueEndingStream, doneAt + 1400);
       }, 1400);
     }, 2200);
   } else {
-    // 부수지 않는다: 시스템의 말을 따른다. 파닥이들의 아우성이 비명으로 변하고 괴물이 된다 → 배드엔딩
+    // 부수지 않는다: 시스템의 말을 따른다. 파닥이들의 아우성이 비명으로 변하고 괴물이 된다 → 검은 화면 → 인게임 장면 → 배드엔딩
     fox.say('...못 해. 너희가 없으면 난...', 2.6);
     setTimeout(() => {
       // 파닥이들이 그 자리에서 비명을 지르며 괴물(오염의 최종 형태)로 변한다
@@ -685,8 +721,47 @@ function resolveChoice(which) {
         audio.sfx.crumble();
         scare.trigger({ shake: 1.2, flash: true, sound: true });
       }, 900);
-      setTimeout(() => showEnding('bad'), 3400);
+      setTimeout(badEndingStream, 3600);
     }, 2600);
+  }
+}
+// ---------- 흰빛: 파닥이가 사라질 때 그 자리에서 커지며 흩어지는 빛 ----------
+const glowTexture = (() => {
+  let tex = null;
+  return () => {
+    if (tex) return tex;
+    const c = document.createElement('canvas');
+    c.width = c.height = 128;
+    const g = c.getContext('2d');
+    const grad = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+    grad.addColorStop(0, 'rgba(255,255,255,1)');
+    grad.addColorStop(0.35, 'rgba(255,250,235,0.85)');
+    grad.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = grad;
+    g.fillRect(0, 0, 128, 128);
+    tex = new THREE.CanvasTexture(c);
+    return tex;
+  };
+})();
+const lights = []; // [{ sprite, t, dur, base }]
+function whiteLight(pos, scale = 1) {
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture(), transparent: true, depthTest: false, blending: THREE.AdditiveBlending }));
+  sprite.position.copy(pos).y += 0.9 * scale;
+  sprite.renderOrder = 20;
+  scene.add(sprite);
+  lights.push({ sprite, t: 0, dur: 1.0, base: 1.6 * scale });
+}
+function updateLights(dt) {
+  for (let i = lights.length - 1; i >= 0; i--) {
+    const l = lights[i];
+    l.t += dt;
+    const k = Math.min(1, l.t / l.dur);
+    l.sprite.scale.setScalar(l.base * (1 + k * 4));
+    l.sprite.material.opacity = k < 0.15 ? k / 0.15 : 1 - (k - 0.15) / 0.85;
+    if (k >= 1) {
+      scene.remove(l.sprite);
+      lights.splice(i, 1);
+    }
   }
 }
 // ---------- 숲의 괴물 (오염이 극한까지 간 파닥이) ----------
@@ -727,16 +802,212 @@ function updateMonsters(dt) {
     m.char.update(dt, { dist: Math.hypot(dx, dz) }); // 가까워지면 얼굴을 들이민다
   }
 }
-function showEnding(kind) {
+// ---------- 엔딩 크레딧 ----------
+function rollCredits(kind) {
   ending = kind;
+  cutscene = true;
   sysWarnEl.classList.remove('on', 'dock');
+  bangEl.classList.remove('on');
   endingEl.classList.remove('true', 'bad');
   endingEl.classList.add('on', kind);
-  endingEl.querySelector('.endTitle').textContent = kind === 'true' ? '부수다' : '남기다';
-  endingEl.querySelector('.endBody').innerHTML =
-    kind === 'true'
-      ? '석상이 무너지자 파닥이들은 빛이 되어 흩어졌다.<br>숲은 조용해졌고, 노미요는 혼자 남았다.<br><br>며칠 뒤, 방송 채팅창에 낯익은 이름들이 하나둘 돌아왔다.<br><span class="endChat">별사탕공장: 노미요! 오늘도 왔어요</span><br><span class="endChat">두부한모: 저 구독 다시 눌렀어요 ㅎㅎ</span><br><span class="endChat">미야옹집사: 왠지 오랜만인 기분</span>'
-      : '석상은 그대로 남았다.<br>파닥이들의 아우성은 점점 낮아지고, 커지고, 검어졌다.<br><br>"보내줘. 보내줘. 보내줘."<br><br>노미요는 혼자가 되지 않았다. 대신, 아무도 놓아줄 수 없게 되었다.';
+  const cr = endingEl.querySelector('.credits');
+  const blk = (role, who) => `<div class="blk"><div class="role">${role}</div><div class="who">${who}</div></div>`;
+  cr.innerHTML =
+    `<div class="blk"><div class="ttl">노미요와 파닥이들</div><div class="endName">${kind === 'true' ? '〈부수다〉' : '〈남기다〉'}</div></div>` +
+    blk('출연', '노미요<br>파닥이들<br>' + (kind === 'true' ? '' : '숲의 괴물<br>') + '고성의 괴물') +
+    blk('원작 · 기획 · 제작', 'sora jeong') +
+    blk('그래픽 · 음악 · 효과음', '전부 코드로 그리고 합성함') +
+    blk('만든 도구', 'Three.js · Vite') +
+    `<div class="blk last">${kind === 'true' ? '시청해 주셔서 감사합니다.<br>미요미요~' : '보내줘'}</div>` +
+    `<div class="blk endHint">R · 처음부터</div>`;
+  // 아래에서 위로 올라오다가 마지막 문구(.last)가 화면 가운데에서 멈춘다
+  requestAnimationFrame(() => {
+    const last = cr.querySelector('.last');
+    const vh = window.innerHeight;
+    const endY = -(last.offsetTop + last.offsetHeight / 2 - vh / 2);
+    cr.animate([{ transform: `translateY(${vh}px)` }, { transform: `translateY(${endY}px)` }], { duration: params.has('nofade') ? 10 : 30000, easing: 'linear', fill: 'forwards' });
+  });
+  setTimeout(() => {
+    blackFade(false);
+    fadeWhite(false);
+  }, 1700);
+}
+
+// ---------- 엔딩 연출: 인게임 화면으로 이어지는 장면 ----------
+const BOARD_LINES = ['미요미요. 하이', '노미요 안녕', '노미요 오늘 방송도 재미있었어.', '미요 우리 다음에 또 봐.'];
+const DEMO_CLOSING = ['자~ 여러분들 오늘 게임 여기까지 할게요.', '시청해주셔서 감사하구요. 미요미요~'];
+let endingStream = null; // 'bad' | 'true': 인게임 자동 진행 중
+let badKnockStarted = false;
+let badFallback = 0; // 괴물이 끝내 안 붙을 때 노크를 시작할 시각(ms)
+function blackFade(on) {
+  if (params.has('nofade')) return;
+  fadeEl.classList.toggle('on', on);
+}
+function fadeWhite(on) {
+  if (params.has('nofade')) return;
+  fadeWhiteEl.classList.toggle('on', on);
+}
+/** 인게임 화면을 자동 진행 모드로 켠다 (두 엔딩 공용). 채팅은 평소처럼 흐른다 */
+function enterDemoStream(kind) {
+  endingStream = kind;
+  streaming = true;
+  introReady = false;
+  streamSession++;
+  chatLog.clear();
+  chatLog.setVisible(true);
+  gameScreen.setVisible(true);
+  gameScreen.setStatus('접속 중...');
+  castle.startDemo({ monster: kind === 'bad', tier: kind === 'bad' ? 2 : 0, presence: kind === 'bad' ? 0.45 : 0 });
+  if (params.has('trace')) console.log(`[trace] demo ${kind} start t=${performance.now().toFixed(0)}`);
+  streamSim.reset();
+  streamTime = 0;
+  modeEl.textContent = 'LIVE';
+}
+/** 배드엔딩: 검게 → 인게임(괴물이 쫓아옴). 잡히기 직전은 루프에서 monsterDistance 로 감지 */
+function badEndingStream() {
+  blackFade(true);
+  sysWarnEl.classList.remove('on', 'dock'); // 위로 물러나 있던 시스템 경고창이 인게임 화면 위에 남지 않도록
+  setTimeout(() => {
+    enterDemoStream('bad');
+    badKnockStarted = false;
+    badFallback = performance.now() + 16000;
+    setTimeout(() => endingStream === 'bad' && !badKnockStarted && badKnockSequence(), 16000); // 안전 타임아웃 (프레임이 드물어도 시작되도록 타이머로도)
+    setTimeout(() => blackFade(false), 300);
+  }, params.has('nofade') ? 0 : 1600);
+}
+const BAD_CHAT = ['노미요 무슨 소리 나지 않았어?', '누구왔어?', '파닭시켰어?'];
+const SPAM_NAMES = ['미야옹집사', '버터젤리', '하늘다람쥐', '두부한모', '별사탕공장'];
+function showBang(text) {
+  bangEl.textContent = text;
+  bangEl.classList.remove('on');
+  void bangEl.offsetWidth;
+  bangEl.classList.add('on');
+}
+/**
+ * 잡히기 직전에 화면이 멈추고: 현실의 방문 쾅쾅쾅 → 채팅 → 탕탕탕 → 붉은 "보내줘" 도배 → 쾅! 점프스케어 → 검은 화면 → 크레딧.
+ * upTo(ms) 를 주면 그 시각까지의 단계를 타이머 없이 즉시 실행한다 (헤드리스 스크린샷용: ?knock=7000)
+ */
+function badKnockSequence(upTo = null) {
+  badKnockStarted = true;
+  if (params.has('trace')) console.log(`[trace] badKnock start t=${performance.now().toFixed(0)}`);
+  castle.freeze();
+  const steps = [];
+  const at = (ms, fn) => steps.push([ms, fn]);
+  at(0, () => {
+    scare.knock({ count: 3, gap: 0.3, volume: 1.0 });
+    scare.trigger({ shake: 0.6, flash: false, sound: false });
+  });
+  at(900, () => gameScreen.setStatus('노미요: ...?'));
+  BAD_CHAT.forEach((text, i) => at(1500 + i * 750, () => chatLog.addMessage({ name: streamSim.randomViewer(), text })));
+  at(4300, () => {
+    scare.knock({ count: 4, gap: 0.2, volume: 1.0 });
+    scare.trigger({ shake: 0.8, flash: false, sound: false });
+    gameScreen.setStatus('노미요: 잠깐만요...');
+  });
+  at(5500, () => {
+    glitchEl.classList.remove('on');
+    void glitchEl.offsetWidth;
+    glitchEl.classList.add('on');
+    audio.sfx.static(0.9);
+  });
+  for (let i = 0; i < 24; i++) at(5600 + i * 140, () => chatLog.addMessage({ name: SPAM_NAMES[i % SPAM_NAMES.length], text: '보내줘 보내줘 보내줘 보내줘', red: true, subscriber: true }));
+  at(9000, () => {
+    scare.knock({ count: 5, gap: 0.15, volume: 1.0 });
+    scare.trigger({ shake: 1.6, flash: true, sound: true });
+    showBang('쾅!');
+  });
+  at(10000, () => {
+    showBang('보내줘!');
+    scare.scream({ seconds: 2.2 });
+  });
+  at(11900, () => blackFade(true));
+  at(13500, () => {
+    bangEl.classList.remove('on');
+    stopStreaming({ instant: true });
+    endingStream = null;
+    rollCredits('bad');
+  });
+  for (const [ms, fn] of steps) {
+    if (upTo === null) setTimeout(fn, ms);
+    else if (ms <= upTo) fn();
+  }
+}
+/** 진엔딩: 흰 화면 → 인게임(괴물 없음)을 잠시 → 노미요의 마무리 멘트 → 'demoend' → 에필로그 */
+function trueEndingStream() {
+  fadeWhite(true);
+  setTimeout(() => {
+    enterDemoStream('true');
+    setTimeout(() => fadeWhite(false), 400);
+    setTimeout(() => castle.isDemo() && castle.closeDemo(DEMO_CLOSING), 7500);
+  }, params.has('nofade') ? 0 : 1500);
+}
+/** 에필로그: 방송이 끝나고 파닥이 없는 방으로. 침대 위 채팅 보드에 메시지가 적혀 있다 */
+function startEpilogue() {
+  blackFade(true);
+  setTimeout(() => {
+    stopStreaming({ instant: true });
+    endingStream = null;
+    epilogue = true;
+    setHorror(false);
+    companion = null;
+    sessionChicks = [];
+    crateOpened = false;
+    cutscene = false;
+    for (const m of monsters) scene.remove(m.char.group);
+    monsters.length = 0;
+    loadWorld('house');
+    fox.group.position.copy(world.computer.approach);
+    foxState.heading = 0;
+    fox.group.rotation.y = 0;
+    fox.setExpression('dot');
+    fox.setTool(false);
+    controls.target.copy(fox.group.position).y += 1.4;
+    camera.position.copy(controls.target).add(new THREE.Vector3(2.5, 3.4, 7));
+    world.board.setLines(BOARD_LINES);
+    modeEl.textContent = 'HOME';
+    setTimeout(() => blackFade(false), 300);
+    setTimeout(() => sayLines(fox, ['피곤하다.', '그만 잘까.']), 1400);
+  }, params.has('nofade') ? 0 : 1200);
+}
+/** 채팅 보드 들여다보기: 카메라가 보드로 줌인하고 글자가 한 줄씩 적힌다 */
+function viewBoard() {
+  const b = world.board;
+  cutscene = true;
+  prompt.hide();
+  faceTarget(b.position);
+  b.reveal(0);
+  zoomCamera(new THREE.Vector3(b.position.x, b.position.y - 0.2, b.position.z + 4.0), b.position.clone(), 1.1);
+  const n = b.lineCount();
+  const wait = params.has('nofade') ? 0 : 1300;
+  for (let i = 1; i <= n; i++) {
+    setTimeout(() => {
+      b.reveal(i);
+      audio.sfx.talk();
+    }, wait + (i - 1) * 1100);
+  }
+  setTimeout(() => {
+    releaseCamera(1.0);
+    boardRead = true;
+    fox.setExpression('happy');
+    sayLines(fox, ['...고마워, 얘들아.'], () => {
+      fox.setExpression('dot');
+      cutscene = false;
+    });
+  }, wait + n * 1100 + 1200);
+}
+/** 에필로그의 잠자기: 보드를 아직 안 봤으면 발견 혼잣말 + 안내, 봤으면 흰 화면 → 크레딧 */
+function epilogueSleep() {
+  if (!boardRead) {
+    sayLines(fox, ['어? 저게 뭐지?', '무슨 글자가 있네. 원래 있었나?'], () => notice.show('침대 위 채팅 보드를 확인해 보세요', 4));
+    return;
+  }
+  audio.sfx.sleep();
+  cutscene = true;
+  fox.say('...잘 자.', 2.2);
+  setTimeout(() => {
+    fadeWhite(true);
+    setTimeout(() => rollCredits('true'), params.has('nofade') ? 0 : 1800);
+  }, params.has('nofade') ? 0 : 1800);
 }
 
 // ---------- 잠자기 (하루 넘기기) ----------
@@ -750,6 +1021,7 @@ const WAKE_LINES = {
 };
 // 할 일 목록은 따로 보여주지 않는다. 남은 일이 있으면 잠들지 못하고 안내문만 뜬다.
 function trySleep() {
+  if (epilogue) return epilogueSleep();
   if (!plan.allDone()) {
     audio.sfx.deny();
     notice.show(plan.nextHint() ?? '아직 할 일이 남았어요');
@@ -826,6 +1098,12 @@ const castle = createCastleGame({
       cheers.forEach((text, i) => setTimeout(() => streaming && chatLog.addMessage({ name: streamSim.randomViewer(), text }), 250 * i));
     } else if (type === 'exit') {
       endStream(); // 노미요가 마무리 멘트를 마치면 방송 종료 → 방으로
+    } else if (type === 'demoend') {
+      // 진엔딩 인게임 장면의 마무리 멘트가 끝남 → 시청자 인사 → 방으로
+      ['미요미요~', '잘 자요 노미요!', '오늘도 재밌었어요', '다음에 또 봐요~'].forEach((text, i) =>
+        setTimeout(() => streaming && chatLog.addMessage({ name: streamSim.randomViewer(), text }), 300 + 500 * i)
+      );
+      setTimeout(startEpilogue, 2600);
     } else if (type === 'vanish') {
       setTimeout(() => streaming && chatLog.addMessage({ name: streamSim.randomViewer(), text: '방금 npc 사라진 거 뭐야??' }), 900);
     } else if (type === 'dayend') {
@@ -1056,6 +1334,27 @@ if (params.has('monster')) {
 }
 // ?water=1 : 화분 앞에 서서 바로 물주기 시작 (애니메이션 확인용, ?at 과 함께)
 if (params.has('water') && world.plant) setTimeout(() => waterPlant(parseFloat(params.get('water')) || 1.6), 50); // ?water=6 처럼 초 단위 길이 지정 가능
+// ?ending=bad|true : 분기 직후 인게임 장면부터 / ?epilogue=1 : 진엔딩 에필로그 방부터 (&board=1 이면 바로 보드 줌인) / ?credits=true|bad
+if (params.has('ending')) {
+  cutscene = true;
+  setTimeout(params.get('ending') === 'true' ? trueEndingStream : badEndingStream, 100);
+  // &knock=ms : 노크 연출을 바로 시작하고 그 시각(ms)까지의 단계를 즉시 적용 (스크린샷용). &close=1 : 진엔딩 마무리 멘트를 바로
+  if (params.has('knock')) setTimeout(() => endingStream === 'bad' && badKnockSequence(parseInt(params.get('knock'), 10) || 0), 400);
+  if (params.has('close')) setTimeout(() => castle.isDemo() && castle.closeDemo(DEMO_CLOSING), 400);
+}
+if (params.has('epilogue')) {
+  cutscene = true;
+  setTimeout(startEpilogue, 50);
+  if (params.has('board'))
+    setTimeout(() => {
+      fox.group.position.copy(world.board.approach);
+      viewBoard();
+    }, 400);
+}
+if (params.has('credits')) setTimeout(() => rollCredits(params.get('credits') === 'true' ? 'true' : 'bad'), 50);
+// 오프닝: 1일차를 방에서 평범하게 시작할 때만 (디버그 파라미터로 다른 장면을 띄울 땐 생략)
+const DEBUG_SCENE_PARAMS = ['stream', 'talk', 'smash', 'water', 'monster', 'at', 'sit', 'ending', 'epilogue', 'credits', 'world', 'settings', 'noopen'];
+if (day === 1 && !DEBUG_SCENE_PARAMS.some((k) => params.has(k))) setTimeout(playOpening, 900);
 // ?cam=x,y,z : 카메라를 그 위치에 두고 여우를 바라봄 (스크린샷 디버그용)
 if (params.has('cam')) {
   const [x, y, z] = params.get('cam').split(',').map(Number);
@@ -1099,7 +1398,7 @@ function updateFox(dt) {
   if (keys.has('KeyA') || keys.has('ArrowLeft')) ix -= 1;
   if (keys.has('KeyD') || keys.has('ArrowRight')) ix += 1;
   const running = keys.has('ShiftLeft') || keys.has('ShiftRight');
-  const moving = (ix !== 0 || iz !== 0) && !choiceOpen && !ending && !crateOpened && performance.now() >= busyUntil;
+  const moving = (ix !== 0 || iz !== 0) && !choiceOpen && !ending && !crateOpened && !cutscene && performance.now() >= busyUntil;
 
   if (foxState.sitting) {
     // 방송 중에는 이동 키를 무시 (E/Esc 로만). 앉아만 있을 때는 이동 키로 일어남
@@ -1142,7 +1441,7 @@ function updateFox(dt) {
 
   // 문: 멀어졌다가 다시 가까이 가면 월드 전환
   const door = world.door;
-  if (door && !transitioning && !choiceOpen && !ending) {
+  if (door && !transitioning && !choiceOpen && !ending && !cutscene) {
     const d = Math.hypot(p.x - door.position.x, p.z - door.position.z);
     if (!doorArmed && d > door.radius + 0.6) doorArmed = true;
     if (doorArmed && d < door.radius) switchWorld(door.target);
@@ -1227,7 +1526,41 @@ function updateChick(c, dt) {
 // ---------- 카메라 추적 ----------
 const camTarget = new THREE.Vector3();
 const camDelta = new THREE.Vector3();
+// 컷신용 카메라 이동: zoomCamera 로 지정한 위치/시선까지 부드럽게 옮기고(따라가기 잠금), releaseCamera 로 원래 자리로 돌아온다
+let camTween = null; // { fromPos, fromTarget, toPos, toTarget, t, dur, onDone }
+const savedCam = { pos: new THREE.Vector3(), target: new THREE.Vector3() };
+function zoomCamera(pos, target, dur = 1) {
+  savedCam.pos.copy(camera.position);
+  savedCam.target.copy(controls.target);
+  camLocked = true;
+  camTween = { fromPos: camera.position.clone(), fromTarget: controls.target.clone(), toPos: pos, toTarget: target, t: 0, dur, onDone: null };
+}
+function releaseCamera(dur = 1) {
+  camTween = {
+    fromPos: camera.position.clone(),
+    fromTarget: controls.target.clone(),
+    toPos: savedCam.pos.clone(),
+    toTarget: savedCam.target.clone(),
+    t: 0,
+    dur,
+    onDone: () => (camLocked = false),
+  };
+}
 function updateCamera(dt) {
+  if (camTween) {
+    camTween.t += dt;
+    const k = Math.min(1, camTween.t / camTween.dur);
+    const e = k * k * (3 - 2 * k);
+    camera.position.lerpVectors(camTween.fromPos, camTween.toPos, e);
+    controls.target.lerpVectors(camTween.fromTarget, camTween.toTarget, e);
+    controls.update();
+    if (k >= 1) {
+      const done = camTween.onDone;
+      camTween = null;
+      if (done) done();
+    }
+    return;
+  }
   if (camLocked) {
     controls.update();
     return;
@@ -1265,12 +1598,15 @@ renderer.setAnimationLoop(() => {
     updateFox(dt);
     for (const c of chicks) updateChick(c, dt);
     updateMonsters(dt);
+    updateLights(dt);
     updateCamera(dt);
     if (streaming) streamSim.update(dt);
     if (castle.isActive()) {
       castle.update(dt);
       streamTime += dt;
       if (day === 4 && !knockHeard && streamTime > 18) knockEvent();
+      // 배드엔딩 인게임 장면: 괴물이 두 칸 안으로 붙는 순간(또는 안전 타임아웃) 현실의 노크가 시작된다
+      if (endingStream === 'bad' && !badKnockStarted && (castle.monsterDistance() <= 2 || performance.now() > badFallback)) badKnockSequence();
     }
   }
   scare.applyShake(camera, dt);

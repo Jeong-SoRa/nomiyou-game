@@ -84,6 +84,8 @@ const FLOOR_ITEMS = {
   },
 };
 const ROOM_A = { minX: 1, maxX: 5, minY: 1, maxY: 5 }; // 왼쪽 문 너머의 방 (1일차 방송이 끝나는 곳)
+// 엔딩 자동 진행(데모)에서 노미요가 1층 홀을 돌아다니는 경로: 방향 토큰 또는 멈춤(초). 끝나면 처음부터 반복
+const DEMO_ROUTE = ['up', 'up', 'left', 'left', 'left', 0.9, 'down', 'down', 'down', 1.2, 'right', 'right', 'right', 'right', 'up', 'up', 1.0, 'left', 'left', 'down', 'down', 'down', 1.4, 'right', 'right', 'right', 0.8, 'up', 'up', 'up', 'left', 'left', 1.1];
 
 // NPC 대사 (위치 키 "x,y"), tier 별. 마지막 배열 원소까지 다 읽으면 대화 종료
 const NPC_LINES = {
@@ -173,6 +175,8 @@ export function createCastleGame({ canvas, onEvent = () => {} }) {
   let stepsTaken = 0;
   let floor = 1; // 지하 몇 층인지 (1부터)
   let openedDrawers = new Set(); // 이 층에서 연 서랍 "x,y"
+  let demo = null; // 엔딩 자동 진행: { i: 경로 인덱스, wait: 남은 멈춤 초 }. 키 입력 무시, 저장 안 함
+  let frozen = false; // 데모를 그 순간에 정지 (잡히기 직전)
 
   /** 현재 층의 타일·NPC·플레이어를 MAP 에서 새로 만든다 (층 이동 시 재사용) */
   function buildFloor() {
@@ -273,11 +277,53 @@ export function createCastleGame({ canvas, onEvent = () => {} }) {
     } else toast = { text: save ? '이어서 시작' : '방향키로 이동 · E 조사', timer: 3 };
   }
   function stop() {
-    // 게임 오버/탈출은 저장하지 않는다 (게임 오버는 이전 저장 지점에서 다시)
-    if (active && state !== 'won' && state !== 'over') save = snapshot();
+    // 게임 오버/탈출/엔딩 데모는 저장하지 않는다 (게임 오버는 이전 저장 지점에서 다시)
+    if (active && !demo && state !== 'won' && state !== 'over') save = snapshot();
     active = false;
     state = 'idle';
+    demo = null;
+    frozen = false;
     keys.clear();
+  }
+
+  // ---------- 엔딩 자동 진행 ----------
+  /** 저장을 무시하고 1층을 새로 만들어 오프닝 없이 시작. 노미요는 DEMO_ROUTE 를 따라 혼자 돌아다닌다. monster 면 첫 걸음에 괴물이 쫓아온다 */
+  function startDemo({ monster: withMonster = false, tier: t = 0, presence: p = 0.45 } = {}) {
+    reset(t);
+    presence = p;
+    monsterEnabled = withMonster;
+    introSeen = true;
+    active = true;
+    frozen = false;
+    keys.clear();
+    demo = { i: 0, wait: 0.6 };
+  }
+  /** 데모 경로의 다음 걸음 방향 (멈춤 토큰이면 그동안 null) */
+  function demoDir(dt) {
+    if (demo.wait > 0) {
+      demo.wait -= dt;
+      return null;
+    }
+    const token = DEMO_ROUTE[demo.i % DEMO_ROUTE.length];
+    demo.i++;
+    if (typeof token === 'number') {
+      demo.wait = token;
+      return null;
+    }
+    return token;
+  }
+  /** 괴물과의 맨해튼 거리 (없으면 Infinity) */
+  function monsterDistance() {
+    if (!monster || !player) return Infinity;
+    return Math.abs(monster.x - player.x) + Math.abs(monster.y - player.y);
+  }
+  function freeze() {
+    frozen = true;
+  }
+  /** 노미요의 마무리 대사를 자동으로 넘기며 띄우고, 끝나면 'demoend' */
+  function closeDemo(lines) {
+    frozen = false;
+    say('노미요', lines, { next: 'closing', auto: 2.4, onDone: () => onEvent('demoend') });
   }
 
   // ---------- 타일 질의 ----------
@@ -296,7 +342,7 @@ export function createCastleGame({ canvas, onEvent = () => {} }) {
   // ---------- 입력 ----------
   const DIRS = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
   function keydown(code) {
-    if (!active) return;
+    if (!active || demo) return;
     keys.add(code);
     if (code === 'KeyE' || code === 'Enter' || code === 'Space') {
       if (state === 'dialog') advanceDialog();
@@ -309,7 +355,7 @@ export function createCastleGame({ canvas, onEvent = () => {} }) {
   }
   /** 마우스 클릭: 대화 넘기기 / 방송 끄기 버튼 (E 와 동일) */
   function click() {
-    if (!active) return;
+    if (!active || demo) return;
     if (state === 'dialog') advanceDialog();
     else if (state === 'closing') onEvent('exit');
   }
@@ -631,6 +677,7 @@ export function createCastleGame({ canvas, onEvent = () => {} }) {
     }
     if (staticFx > 0) staticFx -= dt;
     if (scareFx > 0) scareFx -= dt;
+    if (frozen) return; // 엔딩 데모 정지: 괴물·노미요·대화 모두 그 자리에
     if (dialog) {
       const full = dialog.lines[dialog.index];
       if (dialog.shown < full.length) dialog.shown = Math.min(full.length, dialog.shown + dt * 28);
@@ -689,7 +736,7 @@ export function createCastleGame({ canvas, onEvent = () => {} }) {
       }
     }
     if (!player.moving && state === 'play' && !hidden) {
-      const d = heldDir();
+      const d = demo ? demoDir(dt) : heldDir();
       if (d) {
         player.dir = d;
         const [dx, dy] = DIRS[d];
@@ -709,7 +756,7 @@ export function createCastleGame({ canvas, onEvent = () => {} }) {
   function onArrive() {
     stepsTaken++;
     // 2일차부터: 첫 걸음에 괴물 등장
-    if (monsterEnabled && !monster && stepsTaken >= 1) spawnMonster();
+    if (monsterEnabled && !monster && stepsTaken >= (demo ? 6 : 1)) spawnMonster(); // 데모에선 몇 걸음 돌아다닌 뒤에 나타난다
     if (monster && monster.x === player.x && monster.y === player.y) return caught();
     const c = at(player.x, player.y);
     if (c === 'a' || c === 'b') {
@@ -1400,5 +1447,10 @@ export function createCastleGame({ canvas, onEvent = () => {} }) {
     isActive: () => active,
     getState: () => state,
     hasSave: () => !!save,
+    startDemo,
+    monsterDistance,
+    freeze,
+    closeDemo,
+    isDemo: () => !!demo,
   };
 }

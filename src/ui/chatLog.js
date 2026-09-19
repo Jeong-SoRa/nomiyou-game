@@ -14,9 +14,9 @@ export function createChatLog({ maxMessages = 40 } = {}) {
   el.id = 'chatLog';
   document.body.appendChild(el);
 
-  function addMessage({ name, text, subscriber = false, isEvent = false }) {
+  function addMessage({ name, text, subscriber = false, isEvent = false, red = false }) {
     const row = document.createElement('div');
-    row.className = 'chatMsg' + (isEvent ? ' chatEvent' : '');
+    row.className = 'chatMsg' + (isEvent ? ' chatEvent' : '') + (red ? ' chatRed' : ''); // red: 배드엔딩 "보내줘" 도배용 붉은 글씨
     // 이벤트 라인(구독 알림 등)은 본문에 이미 이름이 포함되므로 이름을 따로 표시하지 않음
     row.innerHTML = `${subscriber ? CHICK_BADGE : ''}${isEvent ? '' : `<b>${escapeHtml(name)}</b> `}${escapeHtml(text)}`;
     el.appendChild(row);

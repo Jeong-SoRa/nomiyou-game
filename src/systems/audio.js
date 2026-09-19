@@ -309,10 +309,60 @@ export function createAudio() {
       noiseBurst({ dur: 1.4, vol: 0.3, freq: 400, q: 0.4 });
       for (let i = 0; i < 8; i++) noiseBurst({ dur: 0.1, vol: 0.1, freq: 700 + Math.random() * 600, q: 1.5, delay: 0.2 + i * 0.13 });
     },
-    /** 물뿌리개로 물 주는 소리: 잔잔한 물줄기 쏴아 + 잎에 떨어지는 톡톡 */
-    water() {
-      for (let i = 0; i < 6; i++) noiseBurst({ dur: 0.32, vol: 0.05 + (i > 0 && i < 4 ? 0.025 : 0), freq: 2600 + Math.random() * 1200, q: 0.6, delay: 0.22 + i * 0.2 });
-      for (let i = 0; i < 5; i++) tone({ f0: 1500 + Math.random() * 800, f1: 900, dur: 0.05, vol: 0.04, delay: 0.5 + i * 0.22 + Math.random() * 0.1 });
+    /**
+     * 물뿌리개로 물 주는 소리: 잔잔한 물줄기 쏴아 + 잎에 떨어지는 톡톡.
+     * 노이즈 한 줄기를 부드럽게 키웠다가(0.35초) 잦아들게(0.4초) 하고, 밴드패스 주파수를 LFO 로 천천히 흔들어 물줄기 느낌을 낸다.
+     * (예전엔 0.2초 간격으로 노이즈를 여섯 번 즉시 최대 볼륨으로 터뜨려서 "탕탕탕"처럼 들렸다)
+     */
+    water(dur = 1.6) {
+      if (!ctx || muted) return;
+      const a = ctx;
+      const t0 = a.currentTime;
+      const total = dur + 0.3;
+      const len = Math.floor(a.sampleRate * total);
+      const buf = a.createBuffer(1, len, a.sampleRate);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+      const n = a.createBufferSource();
+      n.buffer = buf;
+      const bp = a.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.value = 2400;
+      bp.Q.value = 0.7;
+      const lfo = a.createOscillator();
+      lfo.frequency.value = 5.5;
+      const lfoGain = a.createGain();
+      lfoGain.gain.value = 500;
+      lfo.connect(lfoGain).connect(bp.frequency);
+      const hp = a.createBiquadFilter();
+      hp.type = 'highpass';
+      hp.frequency.value = 900;
+      const g = a.createGain();
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(0.12, t0 + 0.35);
+      g.gain.setValueAtTime(0.12, t0 + Math.max(0.36, dur - 0.4));
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur + 0.25);
+      n.connect(bp).connect(hp).connect(g).connect(sfxBus);
+      n.start(t0);
+      lfo.start(t0);
+      n.stop(t0 + total);
+      lfo.stop(t0 + total);
+      // 잎에 떨어지는 물방울: 짧은 램프업으로 클릭 없이 톡톡
+      const drops = Math.max(3, Math.floor(dur / 0.25));
+      for (let i = 0; i < drops; i++) {
+        const t = t0 + 0.5 + i * 0.22 + Math.random() * 0.12;
+        const o = a.createOscillator();
+        o.type = 'sine';
+        o.frequency.setValueAtTime(1800 + Math.random() * 900, t);
+        o.frequency.exponentialRampToValueAtTime(700, t + 0.07);
+        const og = a.createGain();
+        og.gain.setValueAtTime(0.0001, t);
+        og.gain.exponentialRampToValueAtTime(0.03, t + 0.012);
+        og.gain.exponentialRampToValueAtTime(0.0001, t + 0.08);
+        o.connect(og).connect(sfxBus);
+        o.start(t);
+        o.stop(t + 0.1);
+      }
     },
     /** 치지직 (화면 노이즈와 함께) */
     static(dur = 0.8) {

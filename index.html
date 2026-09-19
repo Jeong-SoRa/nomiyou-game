@@ -113,14 +113,31 @@
         text-shadow: 0 0 12px #ff2020, 2px 0 #ff9090, -2px 0 #900; }
       @keyframes sysPop { 0% { opacity: 0; transform: translate(-50%, -50%) scale(0.2) rotate(-4deg); } 60% { opacity: 1; transform: translate(-50%, -50%) scale(1.25) rotate(1.5deg); } 100% { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
       @keyframes sysShake { 0% { margin-left: -4px; margin-top: 2px; } 50% { margin-left: 4px; margin-top: -3px; } 100% { margin-left: -2px; margin-top: 1px; } }
-      #ending { z-index: 30; position: fixed; inset: 0; display: none; align-items: center; justify-content: center; text-align: center;
+      /* 엔딩 크레딧: 배경 위로 글줄이 아래에서 위로 올라오고(JS Web Animations), 마지막 "R · 처음부터"가 가운데 멈춘다 */
+      #ending { z-index: 30; position: fixed; inset: 0; display: none; overflow: hidden; text-align: center;
         color: #e8e6df; font: 16px/1.9 system-ui, "Malgun Gothic", sans-serif; opacity: 0; transition: opacity 1.6s ease; }
-      #ending.on { display: flex; opacity: 1; }
+      #ending.on { display: block; opacity: 1; }
       #ending.true { background: radial-gradient(ellipse at center, #f7f2e6 0%, #d9d2c2 100%); color: #3a2f28; }
       #ending.bad { background: radial-gradient(ellipse at center, #2a0508 0%, #050203 100%); color: #ffb3b3; }
-      #ending .endTitle { font-size: 40px; font-weight: 700; letter-spacing: 0.2em; margin-bottom: 18px; }
-      #ending .endChat { font-size: 13px; opacity: 0.8; }
-      #ending .endHint { margin-top: 26px; font-size: 13px; opacity: 0.7; }
+      #ending .credits { position: absolute; left: 0; right: 0; top: 0; will-change: transform; }
+      #ending .credits .blk { margin: 0 auto 64px; max-width: 640px; }
+      #ending .credits .ttl { font-size: 44px; font-weight: 800; letter-spacing: 0.3em; margin-bottom: 8px; }
+      #ending .credits .endName { font-size: 26px; font-weight: 700; letter-spacing: 0.25em; opacity: 0.9; }
+      #ending .credits .role { font-size: 12px; letter-spacing: 0.3em; opacity: 0.6; margin-bottom: 4px; }
+      #ending .credits .who { font-size: 19px; font-weight: 600; }
+      #ending .credits .last { font-size: 22px; font-weight: 700; letter-spacing: 0.1em; }
+      #ending.bad .credits .last { color: #ff3b3b; text-shadow: 0 0 18px rgba(255,40,40,0.8); }
+      #ending .credits .endHint { font-size: 13px; opacity: 0.7; }
+      /* 배드엔딩 점프스케어: 화면 전체를 덮는 "쾅!" / "보내줘!" */
+      #bang { z-index: 29; position: fixed; inset: 0; display: none; align-items: center; justify-content: center; pointer-events: none;
+        background: radial-gradient(ellipse at center, rgba(90,0,6,0.92) 0%, rgba(0,0,0,0.97) 100%);
+        color: #ff2a2a; font: 900 min(28vw, 240px)/1 "Malgun Gothic", system-ui, sans-serif; letter-spacing: 0.04em;
+        text-shadow: 0 0 40px rgba(255,20,20,0.9), 6px 0 #ff9090, -6px 0 #700; }
+      #bang.on { display: flex; animation: bangPop 0.18s cubic-bezier(0.2, 1.8, 0.4, 1) forwards, bangShake 0.09s steps(2) 0.18s infinite; }
+      @keyframes bangPop { 0% { transform: scale(0.3) rotate(-6deg); opacity: 0; } 100% { transform: scale(1) rotate(0); opacity: 1; } }
+      @keyframes bangShake { 0% { transform: translate(-10px, 6px) rotate(-1deg); } 50% { transform: translate(12px, -8px) rotate(1.2deg); } 100% { transform: translate(-4px, 3px); } }
+      /* 배드엔딩 채팅 도배: 붉은 글씨 */
+      #chatLog .chatMsg.chatRed, #chatLog .chatMsg.chatRed b { color: #ff3b3b; font-weight: 800; text-shadow: 0 0 6px rgba(255,40,40,0.6); }
       body.ingame #prompt { display: none; }
       /* 게임 중: 채팅을 화면 맨 위 오른쪽에 낮게(13vh) 붙이고 스크롤바 없이 최신 메시지만 보이게. 위쪽 알약(모드/날짜)은 채팅 왼쪽으로 비켜 준다 */
       body.ingame #chatLog { bottom: auto; top: 12px; max-height: 13vh; overflow-y: hidden; background: rgba(10,12,20,0.55); }
@@ -142,6 +159,8 @@
       body.ingame #settingsBtn { display: none; }
       #fade { position: fixed; inset: 0; z-index: 20; background: #000; opacity: 0; pointer-events: none; transition: opacity 0.35s ease; }
       #fade.on { opacity: 1; }
+      #fadeWhite { position: fixed; inset: 0; z-index: 20; background: #fff; opacity: 0; pointer-events: none; transition: opacity 1.2s ease; }
+      #fadeWhite.on { opacity: 1; }
       #chatLog {
         z-index: 10;
         position: fixed; right: 16px; bottom: 16px; width: 300px; max-height: 42vh;
@@ -174,8 +193,10 @@
         <div class="btn keep" data-choice="keep"><kbd>2</kbd><div class="ttl">부수지 않는다</div><div class="sub">파닥이들과 함께 남는다</div></div>
       </div>
     </div>
-    <div id="ending"><div><div class="endTitle"></div><div class="endBody"></div><div class="endHint">R · 처음부터</div></div></div>
+    <div id="bang"></div>
+    <div id="ending"><div class="credits"></div></div>
     <div id="fade"></div>
+    <div id="fadeWhite"></div>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>

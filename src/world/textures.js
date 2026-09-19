@@ -212,6 +212,34 @@ export function chatSignTexture() {
   return finish(c);
 }
 
+/**
+ * 채팅 보드에 분필로 적힌 메시지 (진엔딩 에필로그). lines 중 앞 shown 줄만 그린다.
+ * 글자를 하나씩 살짝 삐뚤게 찍어 손글씨 느낌. 보드 면(3.15×2.25)에 맞춘 비율
+ */
+export function chatBoardTexture(lines, shown = lines.length) {
+  const [c, ctx] = makeCanvas(1024, 732);
+  ctx.font = 'bold 66px "Malgun Gothic", sans-serif';
+  ctx.textBaseline = 'middle';
+  ctx.textAlign = 'left';
+  const lineH = 150;
+  lines.slice(0, shown).forEach((line, i) => {
+    const y = 110 + i * lineH;
+    // 살짝 다른 회색 + 분필 가루 느낌의 흐린 그림자
+    ctx.fillStyle = i % 2 ? '#3a3b46' : '#2f3540';
+    let x = 60 + (i % 2) * 24;
+    ctx.save();
+    ctx.rotate(rand(-0.012, 0.012));
+    for (const ch of line) {
+      ctx.globalAlpha = rand(0.78, 1);
+      ctx.fillText(ch, x + rand(-1.5, 1.5), y + rand(-3, 3));
+      x += ctx.measureText(ch).width;
+    }
+    ctx.restore();
+  });
+  ctx.globalAlpha = 1;
+  return finish(c);
+}
+
 /** 꺼진 모니터 화면 (미세한 반사) / 공포 모드 노이즈 화면 / 방송 중 화면 */
 export function screenTexture(mode = 'off') {
   const [c, ctx] = makeCanvas(512, 320);
