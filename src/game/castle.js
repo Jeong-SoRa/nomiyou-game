@@ -168,7 +168,9 @@ export function createCastleGame({ canvas, onEvent = () => {} }) {
   let introSeen = false;
   let roomAEntered = false; // 1일차 마무리(왼쪽 방 진입)를 이미 했는지
   let monsterEnabled = false;
-  let monster = null; // { x, y, px, py, fromX, fromY, prog, moving, mode: 'chase'|'search'|'wander', alert, target }
+  let monsters = []; // [{ x, y, px, py, fromX, fromY, prog, moving, mode: 'chase'|'search'|'wander', alert, target }] (보통 1마리, 배드엔딩 등에선 여러 마리)
+  let monsterCount = 1; // 이번 세션에서 몇 마리가 나타나는지
+  let scripted = false; // 세이브를 남기지 않는 특수 세션 (엔딩 등)
   let hidden = null; // 옷장에 숨은 상태 { wx, wy }
   let staticFx = 0; // 치지직 화면 효과 남은 시간
   let scareFx = 0; // 괴물 등장 연출 남은 시간
@@ -184,7 +186,7 @@ export function createCastleGame({ canvas, onEvent = () => {} }) {
     npcs = [];
     revealedX = false;
     openedDrawers = new Set();
-    monster = null;
+    monsters = [];
     hidden = null;
     for (let y = 0; y < H; y++) {
       for (let x = 0; x < W; x++) {
@@ -255,13 +257,15 @@ export function createCastleGame({ canvas, onEvent = () => {} }) {
     for (const n of npcs) if (sv.dead.includes(n.key)) n.alive = false;
   }
 
-  /** opts: { tier, presence, monster } */
+  /** opts: { tier, presence, monster, monsterCount, fresh, line } */
   function start(opts = {}) {
     const o = typeof opts === 'number' ? { tier: opts } : opts;
     reset(o.tier ?? 0);
     presence = o.presence ?? 1;
     monsterEnabled = !!o.monster;
-    if (save) restore(save);
+    monsterCount = o.monsterCount ?? 1;
+    scripted = !!o.fresh; // 엔딩 등 특수 세션: 이전 저장을 무시하고, 진행도 저장하지 않는다
+    if (!o.fresh && save) restore(save);
     active = true;
     keys.clear();
     if (o.skipIntro) introSeen = true; // 디버그
@@ -271,27 +275,34 @@ export function createCastleGame({ canvas, onEvent = () => {} }) {
       if (o.at[2] && DIRS[o.at[2]]) player.dir = o.at[2];
     }
     if (o.inv) for (const it of o.inv) inventory.add(it); // 디버그(?ginv=cup,cupWater,a,b)
-    if (!introSeen) {
+    if (o.line) {
+      // 엔딩 등에서 정해진 대사로 시작 (기본 오프닝 안내문 대신)
+      introSeen = true;
+      say('노미요', [o.line], { next: 'play' });
+    } else if (!introSeen) {
       introSeen = true;
       say('', INTRO_LINES, { onDone: () => (toast = { text: '방향키로 이동 · E 조사', timer: 4 }) });
     } else toast = { text: save ? '이어서 시작' : '방향키로 이동 · E 조사', timer: 3 };
   }
   function stop() {
-    // 게임 오버/탈출/엔딩 데모는 저장하지 않는다 (게임 오버는 이전 저장 지점에서 다시)
-    if (active && !demo && state !== 'won' && state !== 'over') save = snapshot();
+    // 게임 오버/탈출/엔딩 데모(또는 엔딩 실플레이)는 저장하지 않는다 (게임 오버는 이전 저장 지점에서 다시)
+    if (active && !demo && !scripted && state !== 'won' && state !== 'over') save = snapshot();
     active = false;
     state = 'idle';
     demo = null;
     frozen = false;
+    scripted = false;
     keys.clear();
   }
 
   // ---------- 엔딩 자동 진행 ----------
   /** 저장을 무시하고 1층을 새로 만들어 오프닝 없이 시작. 노미요는 DEMO_ROUTE 를 따라 혼자 돌아다닌다. monster 면 첫 걸음에 괴물이 쫓아온다 */
-  function startDemo({ monster: withMonster = false, tier: t = 0, presence: p = 0.45 } = {}) {
+  function startDemo({ monster: withMonster = false, monsterCount: mc = 1, tier: t = 0, presence: p = 0.45 } = {}) {
     reset(t);
     presence = p;
     monsterEnabled = withMonster;
+    monsterCount = mc;
+    scripted = true; // 데모도 저장하지 않는다
     introSeen = true;
     active = true;
     frozen = false;
@@ -314,8 +325,8 @@ export function createCastleGame({ canvas, onEvent = () => {} }) {
   }
   /** 괴물과의 맨해튼 거리 (없으면 Infinity) */
   function monsterDistance() {
-    if (!monster || !player) return Infinity;
-    return Math.abs(monster.x - player.x) + Math.abs(monster.y - player.y);
+    if (!monsters.length || !player) return Infinity;
+    return Math.min(...monsters.map((m) => Math.abs(m.x - player.x) + Math.abs(m.y - player.y)));
   }
   function freeze() {
     frozen = true;
@@ -342,7 +353,7 @@ export function createCastleGame({ canvas, onEvent = () => {} }) {
   // ---------- 입력 ----------
   const DIRS = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
   function keydown(code) {
-    if (!active || demo) return;
+    if (!active || demo || frozen) return;
     keys.add(code);
     if (code === 'KeyE' || code === 'Enter' || code === 'Space') {
       if (state === 'dialog') advanceDialog();
@@ -355,7 +366,7 @@ export function createCastleGame({ canvas, onEvent = () => {} }) {
   }
   /** 마우스 클릭: 대화 넘기기 / 방송 끄기 버튼 (E 와 동일) */
   function click() {
-    if (!active || demo) return;
+    if (!active || demo || frozen) return;
     if (state === 'dialog') advanceDialog();
     else if (state === 'closing') onEvent('exit');
   }
@@ -530,23 +541,23 @@ export function createCastleGame({ canvas, onEvent = () => {} }) {
   // ---------- 옷장 ----------
   function enterWardrobe(wx, wy) {
     hidden = { wx, wy };
-    if (monster) {
-      monster.mode = 'search';
-      monster.target = { x: player.x, y: player.y };
+    for (const m of monsters) {
+      m.mode = 'search';
+      m.target = { x: player.x, y: player.y };
     }
     toast = { text: '옷장 안에 숨었다. 괴물이 멀어지면 E 로 나온다.', timer: 3 };
     onEvent('hide');
   }
   function leaveWardrobe() {
-    const far = !monster || Math.abs(monster.x - player.x) + Math.abs(monster.y - player.y) >= 7;
+    const far = monsters.every((m) => Math.abs(m.x - player.x) + Math.abs(m.y - player.y) >= 7);
     if (!far) {
       toast = { text: '...아직 근처에 있다. 숨을 죽이자.', timer: 2 };
       return;
     }
     hidden = null;
-    if (monster) {
-      monster.mode = 'wander';
-      monster.alert = 6; // 잠시 뒤 다시 쫓아온다
+    for (const m of monsters) {
+      m.mode = 'wander';
+      m.alert = 6; // 잠시 뒤 다시 쫓아온다
     }
     toast = { text: '옷장에서 나왔다.', timer: 2 };
   }
@@ -583,26 +594,36 @@ export function createCastleGame({ canvas, onEvent = () => {} }) {
     }
     return { x: cur % W, y: Math.floor(cur / W) };
   }
-  function spawnMonster() {
-    const cands = [
-      [12, 10],
-      [12, 16],
-      [24, 12],
-      [9, 4],
-      [3, 10],
-    ];
-    let best = null;
-    for (const [x, y] of cands) {
-      const d = Math.abs(x - player.x) + Math.abs(y - player.y);
-      if (monsterWalkable(x, y) && d >= 6 && (!best || d < best.d)) best = { x, y, d };
+  const MONSTER_SPOTS = [
+    [12, 10],
+    [12, 16],
+    [24, 12],
+    [9, 4],
+    [3, 10],
+  ];
+  function makeMonster(x, y) {
+    return { x, y, px: x, py: y, fromX: x, fromY: y, prog: 0, moving: false, mode: 'chase', alert: 0, target: null, stepTime: 0.34 };
+  }
+  /** count=1: 기존처럼 플레이어에게서 6칸 이상 떨어진 곳 중 가장 가까운 한 자리. count>1: 층 곳곳에 미리 퍼져서 나타난다(배드엔딩용 — 사방이 막힌다) */
+  function spawnMonsters(count = 1) {
+    if (count <= 1) {
+      let best = null;
+      for (const [x, y] of MONSTER_SPOTS) {
+        const d = Math.abs(x - player.x) + Math.abs(y - player.y);
+        if (monsterWalkable(x, y) && d >= 6 && (!best || d < best.d)) best = { x, y, d };
+      }
+      if (!best) best = { x: 12, y: 10 };
+      monsters.push(makeMonster(best.x, best.y));
+    } else {
+      // 플레이어 시작 지점(P, 12,10)과 겹치는 후보를 제외한다 — 그 자리에 그대로 스폰되면 시작하자마자 잡힌다
+      const spots = MONSTER_SPOTS.filter(([x, y]) => monsterWalkable(x, y) && Math.abs(x - player.x) + Math.abs(y - player.y) >= 4).slice(0, count);
+      if (!spots.length) spots.push([12, 10]);
+      for (const [x, y] of spots) monsters.push(makeMonster(x, y));
     }
-    if (!best) best = { x: 12, y: 10 };
-    monster = { x: best.x, y: best.y, px: best.x, py: best.y, fromX: best.x, fromY: best.y, prog: 0, moving: false, mode: 'chase', alert: 0, target: null, stepTime: 0.34 };
     scareFx = 1.0;
     onEvent('monster');
   }
-  function updateMonster(dt) {
-    const m = monster;
+  function updateMonsterOne(m, dt) {
     if (m.alert > 0) {
       m.alert -= dt;
       if (m.alert <= 0 && !hidden) m.mode = 'chase';
@@ -718,7 +739,7 @@ export function createCastleGame({ canvas, onEvent = () => {} }) {
         }
       }
     }
-    if (monster && (state === 'play' || state === 'dialog')) updateMonster(dt);
+    if (state === 'play' || state === 'dialog') for (const m of monsters) updateMonsterOne(m, dt);
 
     if (state !== 'play') return;
     const running = keys.has('ShiftLeft') || keys.has('ShiftRight');
@@ -756,8 +777,8 @@ export function createCastleGame({ canvas, onEvent = () => {} }) {
   function onArrive() {
     stepsTaken++;
     // 2일차부터: 첫 걸음에 괴물 등장
-    if (monsterEnabled && !monster && stepsTaken >= (demo ? 6 : 1)) spawnMonster(); // 데모에선 몇 걸음 돌아다닌 뒤에 나타난다
-    if (monster && monster.x === player.x && monster.y === player.y) return caught();
+    if (monsterEnabled && !monsters.length && stepsTaken >= (demo ? 6 : 1)) spawnMonsters(monsterCount); // 데모에선 몇 걸음 돌아다닌 뒤에 나타난다
+    if (monsters.some((m) => m.x === player.x && m.y === player.y)) return caught();
     const c = at(player.x, player.y);
     if (c === 'a' || c === 'b') {
       inventory.add(c);
@@ -1116,7 +1137,6 @@ export function createCastleGame({ canvas, onEvent = () => {} }) {
     ctx.restore();
   }
   function drawMonster(sx, sy) {
-    const m = monster;
     const jx = (Math.random() - 0.5) * 3;
     const jy = (Math.random() - 0.5) * 3;
     ctx.save();
@@ -1142,7 +1162,6 @@ export function createCastleGame({ canvas, onEvent = () => {} }) {
     ctx.fillRect(-8, -14, 4, 3 * blink);
     ctx.fillRect(4, -14, 4, 3 * blink);
     ctx.restore();
-    void m;
   }
 
   function render() {
@@ -1192,7 +1211,7 @@ export function createCastleGame({ canvas, onEvent = () => {} }) {
     const pxs = ox + player.px * TILE;
     const pys = oy + player.py * TILE;
     if (!hidden) drawFox(pxs, pys);
-    if (monster) drawMonster(ox + monster.px * TILE, oy + monster.py * TILE);
+    for (const m of monsters) drawMonster(ox + m.px * TILE, oy + m.py * TILE);
     lights.push([hidden ? ox + hidden.wx * TILE + 16 : pxs + 16, hidden ? oy + hidden.wy * TILE + 16 : pys + 16, hidden ? 60 : 120, 1]);
 
     // 어둠 + 조명 (tier 가 높을수록 더 어둡다)
@@ -1222,8 +1241,8 @@ export function createCastleGame({ canvas, onEvent = () => {} }) {
     ctx.globalCompositeOperation = 'source-over';
 
     // 괴물이 가까우면 화면 가장자리가 붉게 맥동
-    if (monster && !hidden) {
-      const d = Math.abs(monster.px - player.px) + Math.abs(monster.py - player.py);
+    if (monsters.length && !hidden) {
+      const d = Math.min(...monsters.map((m) => Math.abs(m.px - player.px) + Math.abs(m.py - player.py)));
       if (d < 7) {
         const k = (1 - d / 7) * (0.35 + Math.sin(time * 8) * 0.1);
         const g = ctx.createRadialGradient(CANVAS_W / 2, CANVAS_H / 2, CANVAS_H * 0.35, CANVAS_W / 2, CANVAS_H / 2, CANVAS_H * 0.8);

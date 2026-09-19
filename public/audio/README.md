@@ -23,3 +23,8 @@ CC-BY 곡을 쓰면 크레딧 표기가 필요하니 README 에 적어 두세요
 Licensed under Creative Commons: By Attribution 4.0 License
 http://creativecommons.org/licenses/by/4.0/
 
+---
+
+© 2026 weyong. 노미요의 숲. All rights reserved.
+(위 세 곡을 제외한 게임 본체의 그래픽·코드·효과음·구성은 모두 weyong 이 직접 제작했습니다.)
+

@@ -277,10 +277,11 @@ window.addEventListener('keydown', (e) => {
     if (e.code === 'Digit2' || e.code === 'Numpad2') resolveChoice('keep');
     return;
   }
-  // 게임 화면이 켜져 있으면 키 입력은 미니게임으로. Esc 만 접속 종료
+  // 게임 화면이 켜져 있으면 키 입력은 미니게임으로. Esc 만 접속 종료 (단, 엔딩 인게임 장면에선 Esc 로 빠져나가지 못한다)
   if (castle.isActive()) {
-    if (e.code === 'Escape') endStream();
-    else castle.keydown(e.code);
+    if (e.code === 'Escape') {
+      if (!endingStream) endStream();
+    } else castle.keydown(e.code);
     if (e.code.startsWith('Arrow') || e.code === 'Space') e.preventDefault();
     return;
   }
@@ -708,7 +709,7 @@ function resolveChoice(which) {
       }, 1400);
     }, 2200);
   } else {
-    // 부수지 않는다: 시스템의 말을 따른다. 파닥이들의 아우성이 비명으로 변하고 괴물이 된다 → 검은 화면 → 인게임 장면 → 배드엔딩
+    // 부수지 않는다: 시스템의 말을 따른다. 파닥이들의 아우성이 비명으로 변하고 괴물이 된다 → (충분히 둘러싸인 채로 시간을 둔 뒤) 검은 화면 → 인게임(플레이어가 직접 조작) → 배드엔딩
     fox.say('...못 해. 너희가 없으면 난...', 2.6);
     setTimeout(() => {
       // 파닥이들이 그 자리에서 비명을 지르며 괴물(오염의 최종 형태)로 변한다
@@ -721,7 +722,13 @@ function resolveChoice(which) {
         audio.sfx.crumble();
         scare.trigger({ shake: 1.2, flash: true, sound: true });
       }, 900);
-      setTimeout(badEndingStream, 3600);
+      // 다 변한 뒤에도 한동안 괴물들에게 둘러싸인 채로 둔다 (화면이 바로 넘어가지 않도록 잠시 시간을 준다)
+      setTimeout(() => {
+        fox.say('...!', 1.4);
+        scare.trigger({ shake: 0.5, flash: false, sound: false });
+      }, 2300);
+      setTimeout(() => scare.trigger({ shake: 0.8, flash: false, sound: false }), 3900);
+      setTimeout(badEndingStream, 5400);
     }, 2600);
   }
 }
@@ -813,12 +820,13 @@ function rollCredits(kind) {
   const cr = endingEl.querySelector('.credits');
   const blk = (role, who) => `<div class="blk"><div class="role">${role}</div><div class="who">${who}</div></div>`;
   cr.innerHTML =
-    `<div class="blk"><div class="ttl">노미요와 파닥이들</div><div class="endName">${kind === 'true' ? '〈부수다〉' : '〈남기다〉'}</div></div>` +
+    `<div class="blk"><div class="ttl">노미요의 숲</div></div>` +
     blk('출연', '노미요<br>파닥이들<br>' + (kind === 'true' ? '' : '숲의 괴물<br>') + '고성의 괴물') +
-    blk('원작 · 기획 · 제작', 'sora jeong') +
+    blk('기획 및 제작', 'weyong') +
     blk('그래픽 · 음악 · 효과음', '전부 코드로 그리고 합성함') +
     blk('만든 도구', 'Three.js · Vite') +
     `<div class="blk last">${kind === 'true' ? '시청해 주셔서 감사합니다.<br>미요미요~' : '보내줘'}</div>` +
+    `<div class="blk copyright">© 2026 weyong. All rights reserved.</div>` +
     `<div class="blk endHint">R · 처음부터</div>`;
   // 아래에서 위로 올라오다가 마지막 문구(.last)가 화면 가운데에서 멈춘다
   requestAnimationFrame(() => {
@@ -847,7 +855,8 @@ function fadeWhite(on) {
   if (params.has('nofade')) return;
   fadeWhiteEl.classList.toggle('on', on);
 }
-/** 인게임 화면을 자동 진행 모드로 켠다 (두 엔딩 공용). 채팅은 평소처럼 흐른다 */
+const BAD_ENTRY_LINE = '미요미요. 여러분들 게임 계속 진행할게요.';
+/** 인게임 화면을 켠다. 진엔딩은 자동 진행(데모), 배드엔딩은 노미요를 실제로 조작한다. 채팅은 평소처럼 흐른다 */
 function enterDemoStream(kind) {
   endingStream = kind;
   streaming = true;
@@ -857,13 +866,20 @@ function enterDemoStream(kind) {
   chatLog.setVisible(true);
   gameScreen.setVisible(true);
   gameScreen.setStatus('접속 중...');
-  castle.startDemo({ monster: kind === 'bad', tier: kind === 'bad' ? 2 : 0, presence: kind === 'bad' ? 0.45 : 0 });
+  if (kind === 'bad') {
+    // 배드엔딩: 고성 1층에 괴물 네 마리가 이미 곳곳에 퍼져 있다. 플레이어가 직접 움직이지만 구조상 결국 붙잡힐 수밖에 없다
+    castle.start({ tier: 2, presence: 0.45, monster: true, monsterCount: 4, fresh: true, skipIntro: true, line: BAD_ENTRY_LINE });
+    cutscene = false; // 화면이 전환된 뒤부터는 실제 입력을 받는다
+    for (const k of (params.get('gkeys') || '').split(',')) if (k) castle.keydown(k); // 디버그: 게임 키 누른 상태로 시작
+  } else {
+    castle.startDemo({ monster: false, tier: 0, presence: 0 });
+  }
   if (params.has('trace')) console.log(`[trace] demo ${kind} start t=${performance.now().toFixed(0)}`);
   streamSim.reset();
   streamTime = 0;
   modeEl.textContent = 'LIVE';
 }
-/** 배드엔딩: 검게 → 인게임(괴물이 쫓아옴). 잡히기 직전은 루프에서 monsterDistance 로 감지 */
+/** 배드엔딩: 검게 → 인게임(플레이어가 직접 조작, 괴물 네 마리). 잡히기 직전은 루프에서 monsterDistance 로 감지 */
 function badEndingStream() {
   blackFade(true);
   sysWarnEl.classList.remove('on', 'dock'); // 위로 물러나 있던 시스템 경고창이 인게임 화면 위에 남지 않도록
@@ -889,6 +905,7 @@ function showBang(text) {
  */
 function badKnockSequence(upTo = null) {
   badKnockStarted = true;
+  cutscene = true; // 여기서부턴 다시 연출: 입력을 막는다 (M/O 는 예외)
   if (params.has('trace')) console.log(`[trace] badKnock start t=${performance.now().toFixed(0)}`);
   castle.freeze();
   const steps = [];
@@ -1587,7 +1604,7 @@ renderer.setAnimationLoop(() => {
   const t = clock.elapsedTime;
   if (params.has('trace') && frames++ % 10 === 0) {
     const p = fox.group.position;
-    console.log(`[trace] f=${frames} world=${world.group.name} fox=${p.x.toFixed(2)},${p.z.toFixed(2)} armed=${doorArmed} trans=${transitioning}`);
+    console.log(`[trace] f=${frames} world=${world.group.name} fox=${p.x.toFixed(2)},${p.z.toFixed(2)} armed=${doorArmed} trans=${transitioning} castleActive=${castle.isActive()} endingStream=${endingStream} mDist=${castle.isActive() ? castle.monsterDistance() : 'n/a'} badKnockStarted=${badKnockStarted}`);
   }
   // ?steps=N : 느린 환경(헤드리스 테스트)에서 프레임당 N번 시뮬레이션
   const steps = Math.max(1, parseInt(params.get('steps') || '1', 10));
