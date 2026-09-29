@@ -7,6 +7,8 @@
     <style>
       html, body { margin: 0; height: 100%; overflow: hidden; background: #0a0c14; }
       canvas { display: block; }
+      /* 우상단 모드/날짜 배지: 사용자 요청으로 표시하지 않는다 (main.js 의 상태 갱신은 그대로) */
+      #mode, #day { display: none !important; }
       #mode { z-index: 10; position: fixed; right: 16px; top: 16px; padding: 8px 14px; border-radius: 999px;
         color: #ffb070; font: 600 13px system-ui, sans-serif; letter-spacing: 0.04em;
         background: rgba(10, 12, 20, 0.72); border: 1px solid rgba(255,176,112,0.4); }
@@ -57,9 +59,9 @@
         border: 1px solid rgba(255,255,255,0.3); border-bottom-width: 2px; border-radius: 4px;
         font: 12px monospace; color: #fff; background: rgba(255,255,255,0.06);
       }
-      #notice { z-index: 12; position: fixed; left: 50%; top: 18%; transform: translateX(-50%); padding: 10px 18px; border-radius: 10px;
+      #notice { z-index: 12; position: fixed; left: 50%; top: 18%; transform: translateX(-50%); min-width: 360px; padding: 12px 28px; border-radius: 10px;
         background: rgba(10,12,20,0.82); border: 1px solid rgba(255,176,112,0.5); color: #ffe9c9;
-        font: 600 15px system-ui, "Malgun Gothic", sans-serif; opacity: 0; pointer-events: none; transition: opacity 0.2s ease; white-space: nowrap; }
+        font: 600 15px/1.6 system-ui, "Malgun Gothic", sans-serif; opacity: 0; pointer-events: none; transition: opacity 0.2s ease; white-space: pre-line; text-align: center; }
       #notice.on { opacity: 1; }
       #dayCard { z-index: 21; position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none;
         color: #e8e6df; font: 700 42px system-ui, "Malgun Gothic", sans-serif; letter-spacing: 0.3em; opacity: 0; transition: opacity 0.4s ease; }
@@ -119,6 +121,46 @@
       #ending.on { display: block; opacity: 1; }
       #ending.true { background: radial-gradient(ellipse at center, #f7f2e6 0%, #d9d2c2 100%); color: #3a2f28; }
       #ending.bad { background: radial-gradient(ellipse at center, #2a0508 0%, #050203 100%); color: #ffb3b3; }
+      /* 엔딩 3 (내일도 오늘도 같은 하루): 검은 화면 */
+      #ending.same { background: #000; color: #9a9a9a; }
+      #ending.same .credits .last { color: #d8d8d8; letter-spacing: 0.3em; }
+      /* 엔딩 4 (게임 오버): 2일차 숲의 괴물에게 잡힘. 버튼(또는 R/Enter)으로 그날 처음부터 */
+      #gameOver { z-index: 30; position: fixed; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 18px;
+        background: radial-gradient(ellipse at center, rgba(70,0,8,0.96) 0%, rgba(0,0,0,0.98) 100%); color: #ff5c5c; font: 15px/1.6 system-ui, "Malgun Gothic", sans-serif; }
+      #gameOver.on { display: flex; }
+      #gameOver .go { font-size: 56px; font-weight: 900; letter-spacing: 0.2em; text-shadow: 0 0 24px rgba(255,40,40,0.8); }
+      #gameOver .sub { color: rgba(255,179,179,0.75); letter-spacing: 0.2em; font-size: 13px; }
+      #gameOver .btn { margin-top: 12px; padding: 12px 34px; border-radius: 12px; cursor: pointer; user-select: none; color: #ffe9c9; font-weight: 700; font-size: 17px;
+        background: rgba(20,4,6,0.9); border: 2px solid rgba(255,92,92,0.6); box-shadow: 0 8px 26px rgba(0,0,0,0.6); }
+      #gameOver .btn:hover { border-color: #ff8a8a; box-shadow: 0 0 26px rgba(255,60,60,0.5); }
+      #gameOver .btn kbd { margin-right: 8px; padding: 1px 7px; border: 1px solid rgba(255,255,255,0.4); border-bottom-width: 3px; border-radius: 5px; font: 700 12px monospace; color: #ffb070; }
+      /* 6자리 비밀번호 다이얼 (숲의 동상 / 고성 문 공용) */
+      #dial { z-index: 24; position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,0.55); }
+      #dial.on { display: flex; }
+      #dial .box { padding: 18px 26px 16px; border-radius: 14px; background: rgba(10,12,20,0.95); border: 2px solid rgba(255,176,112,0.55);
+        color: #e8e6df; font: 14px/1.6 system-ui, "Malgun Gothic", sans-serif; text-align: center; box-shadow: 0 12px 40px rgba(0,0,0,0.7); }
+      #dial .title { font-weight: 700; color: #ffb070; font-size: 16px; margin-bottom: 12px; letter-spacing: 0.04em; }
+      #dial .digits { display: flex; gap: 8px; justify-content: center; }
+      #dial .cell { width: 44px; padding: 4px 0; border-radius: 8px; cursor: pointer; user-select: none; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.12); }
+      #dial .cell.cur { border-color: #ffb070; background: rgba(255,176,112,0.16); box-shadow: 0 0 14px rgba(255,176,112,0.35); }
+      #dial .cell .num { font: 700 30px monospace; color: #fff; line-height: 1.2; }
+      #dial .cell .arrow { font-size: 10px; color: rgba(255,255,255,0.35); line-height: 1; }
+      #dial .cell.cur .arrow { color: #ffb070; }
+      #dial .hint { margin-top: 12px; font-size: 12px; color: rgba(232,230,223,0.6); }
+      #dial kbd, #confirm kbd { display: inline-block; min-width: 14px; padding: 0 5px; margin: 0 2px; border: 1px solid rgba(255,255,255,0.35); border-bottom-width: 2px; border-radius: 4px;
+        font: 700 11px monospace; color: #ffb070; background: rgba(255,255,255,0.06); }
+      /* 시스템 메시지 선택창 ("관찰하시겠습니까?") */
+      /* 화면 가운데를 가리지 않도록 아래쪽에 띄운다 */
+      #confirm { z-index: 24; position: fixed; inset: 0; display: none; align-items: flex-end; justify-content: center; padding-bottom: 10vh; background: rgba(0,0,0,0.25); }
+      #confirm.on { display: flex; }
+      #confirm .box { min-width: 320px; border-radius: 10px; overflow: hidden; background: rgba(10,12,20,0.96); border: 2px solid rgba(159,179,200,0.5);
+        color: #e8e6df; font: 15px/1.6 system-ui, "Malgun Gothic", sans-serif; box-shadow: 0 12px 40px rgba(0,0,0,0.7); }
+      #confirm .bar { padding: 5px 12px; background: rgba(159,179,200,0.18); color: #9fb3c8; font: 700 11px monospace; letter-spacing: 0.25em; }
+      #confirm .msg { padding: 18px 22px 8px; text-align: center; font-weight: 600; white-space: pre-line; line-height: 1.7; }
+      #confirm .opts { display: flex; gap: 10px; justify-content: center; padding: 8px 18px 18px; }
+      #confirm .opt { flex: 1; padding: 9px 14px; border-radius: 8px; cursor: pointer; user-select: none; text-align: center;
+        background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.14); transition: border-color 0.12s, background 0.12s; }
+      #confirm .opt.cur { border-color: #ffb070; background: rgba(255,176,112,0.16); color: #ffe9c9; }
       #ending .credits { position: absolute; left: 0; right: 0; top: 0; will-change: transform; }
       #ending .credits .blk { margin: 0 auto 64px; max-width: 640px; }
       #ending .credits .ttl { font-size: 44px; font-weight: 800; letter-spacing: 0.3em; margin-bottom: 8px; }
@@ -143,12 +185,12 @@
       /* 게임 중: 채팅을 화면 맨 위 오른쪽에 낮게(13vh) 붙이고 스크롤바 없이 최신 메시지만 보이게. 위쪽 알약(모드/날짜)은 채팅 왼쪽으로 비켜 준다 */
       body.ingame #chatLog { bottom: auto; top: 12px; max-height: 13vh; overflow-y: hidden; background: rgba(10,12,20,0.55); }
       body.ingame #mode, body.ingame #day { right: 352px; }
-      #settingsBtn { z-index: 11; position: fixed; right: 16px; top: 96px; width: 34px; height: 34px; border-radius: 999px; cursor: pointer;
+      #settingsBtn { z-index: 11; position: fixed; right: 16px; top: 16px; width: 34px; height: 34px; border-radius: 999px; cursor: pointer;
         color: #e8e6df; font-size: 18px; line-height: 1; background: rgba(10,12,20,0.6); border: 1px solid rgba(255,255,255,0.14); }
       #settingsBtn:hover { border-color: rgba(255,176,112,0.6); color: #ffb070; }
       #settings { z-index: 25; position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,0.45); }
       #settings.on { display: flex; }
-      #settings .box { width: 340px; padding: 18px 22px; border-radius: 12px; background: rgba(10,12,20,0.94); border: 1px solid rgba(255,176,112,0.5);
+      #settings .box { width: 380px; padding: 18px 22px; border-radius: 12px; background: rgba(10,12,20,0.94); border: 1px solid rgba(255,176,112,0.5);
         color: #e8e6df; font: 14px/1.6 system-ui, "Malgun Gothic", sans-serif; }
       #settings .title { display: flex; justify-content: space-between; font-weight: 700; color: #ffb070; font-size: 16px; margin-bottom: 10px; }
       #settings .close { cursor: pointer; color: rgba(232,230,223,0.7); }
@@ -157,7 +199,44 @@
       #settings input[type=checkbox] { justify-self: start; accent-color: #ffb070; width: 16px; height: 16px; }
       #settings .val { text-align: right; font: 12px monospace; color: rgba(232,230,223,0.8); }
       #settings .hint { margin-top: 12px; font-size: 11px; color: rgba(232,230,223,0.55); }
+      /* 설정창 아래쪽 단축키 안내 */
+      #settings .keys { margin-top: 14px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.12); font-size: 12px; }
+      #settings .keysTitle { font-weight: 700; color: #ffb070; margin-bottom: 6px; font-size: 13px; }
+      #settings .keyRow { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; color: rgba(232,230,223,0.85); }
+      #settings .keyRow span:last-child { text-align: right; color: rgba(232,230,223,0.7); }
+      #settings kbd { display: inline-block; min-width: 14px; text-align: center; padding: 0 5px; margin: 0 1px; border: 1px solid rgba(255,255,255,0.35); border-bottom-width: 2px; border-radius: 4px;
+        font: 700 11px monospace; color: #ffb070; background: rgba(255,255,255,0.06); }
       body.ingame #settingsBtn { display: none; }
+      /* 나침반 (숲): 왼쪽 위. 위쪽 바늘이 보는 방향, 글자판이 돈다 */
+      #compass { z-index: 10; position: fixed; left: 16px; top: 16px; width: 86px; height: 86px; border-radius: 50%; display: none;
+        background: radial-gradient(circle at center, rgba(20,22,32,0.85) 0%, rgba(10,12,20,0.75) 100%); border: 2px solid rgba(255,176,112,0.45);
+        box-shadow: 0 4px 16px rgba(0,0,0,0.5); font: 700 13px system-ui, sans-serif; color: rgba(232,230,223,0.8); }
+      #compass.on { display: block; }
+      #compass .needle { position: absolute; left: 50%; top: 4px; width: 0; height: 0; transform: translateX(-50%); border-left: 6px solid transparent; border-right: 6px solid transparent; border-bottom: 12px solid #ffb070; }
+      #compass .rose { position: absolute; inset: 0; transition: transform 0.15s linear; }
+      #compass .rose span { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); }
+      #compass .rose .n { color: #ff6a5a; font-size: 15px; transform: translate(-50%, -50%) translateY(-27px); }
+      #compass .rose .s { transform: translate(-50%, -50%) translateY(27px); }
+      #compass .rose .e { transform: translate(-50%, -50%) translateX(27px); }
+      #compass .rose .w { transform: translate(-50%, -50%) translateX(-27px); }
+      #compass::after { content: ''; position: absolute; left: 50%; top: 50%; width: 5px; height: 5px; border-radius: 50%; background: #ffb070; transform: translate(-50%, -50%); }
+      /* 시작 화면: 방 장면 위의 반투명 레이어 + 커다란 타이틀 + 메뉴 */
+      #title { z-index: 26; position: fixed; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: flex-start; padding-top: 8vh; gap: 0;
+        background: rgba(6, 7, 14, 0.62); backdrop-filter: blur(3px); color: #e8e6df; font: 16px/1.6 system-ui, "Malgun Gothic", sans-serif; }
+      #title.on { display: flex; }
+      #title .ttl { font-size: clamp(64px, 12vw, 150px); font-weight: 900; letter-spacing: 0.18em; padding-left: 0.18em; color: #ffe9c9; line-height: 1.1;
+        text-shadow: 0 6px 30px rgba(0,0,0,0.85), 0 0 60px rgba(255,176,112,0.35); }
+      #title .ttl .small { font-size: 0.5em; letter-spacing: 0.1em; vertical-align: 0.12em; opacity: 0.9; }
+      #title .menu { display: flex; flex-direction: column; gap: 12px; width: min(360px, 80vw); margin-top: 22vh; }
+      #title .hint { margin-top: 26px; }
+      #title .item { display: flex; align-items: center; gap: 14px; padding: 14px 22px; border-radius: 12px; cursor: pointer; user-select: none; font-size: 22px; font-weight: 700;
+        background: rgba(10,12,20,0.7); border: 2px solid rgba(255,255,255,0.16); transition: transform 0.12s, border-color 0.12s, box-shadow 0.12s; }
+      #title .item.cur { border-color: #ffb070; color: #ffe9c9; transform: translateX(6px); box-shadow: 0 0 26px rgba(255,176,112,0.35); }
+      #title .item.off { opacity: 0.35; cursor: default; }
+      #title .item kbd { display: inline-block; min-width: 20px; text-align: center; padding: 1px 7px; border: 1px solid rgba(255,255,255,0.4); border-bottom-width: 3px; border-radius: 6px;
+        font: 700 13px monospace; color: #ffb070; background: rgba(255,255,255,0.08); }
+      #title .hint { font-size: 13px; color: rgba(232,230,223,0.6); }
+      #title .hint kbd { padding: 0 5px; border: 1px solid rgba(255,255,255,0.35); border-bottom-width: 2px; border-radius: 4px; font: 700 11px monospace; color: #ffb070; }
       #fade { position: fixed; inset: 0; z-index: 20; background: #000; opacity: 0; pointer-events: none; transition: opacity 0.35s ease; }
       #fade.on { opacity: 1; }
       #fadeWhite { position: fixed; inset: 0; z-index: 20; background: #fff; opacity: 0; pointer-events: none; transition: opacity 1.2s ease; }
@@ -195,6 +274,7 @@
       </div>
     </div>
     <div id="bang"></div>
+    <div id="gameOver"><div class="go">GAME OVER</div><div class="sub">엔딩 4</div><div class="btn"><kbd>R</kbd>다시 시작</div></div>
     <div id="ending"><div class="credits"></div></div>
     <div id="fade"></div>
     <div id="fadeWhite"></div>

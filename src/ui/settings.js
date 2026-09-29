@@ -1,4 +1,4 @@
-/** 설정창: 음량 슬라이더(전체/배경음/효과음) + 음소거. O 키 또는 톱니 버튼으로 열고 닫음 */
+/** 설정창: 음량 슬라이더(전체/배경음/효과음) + 음소거 + 아래쪽 단축키 안내. O 키 또는 톱니 버튼으로 열고 닫음 */
 const LABELS = { master: '전체 음량', bgm: '배경음', sfx: '효과음' };
 
 export function createSettings(audio) {
@@ -22,7 +22,18 @@ export function createSettings(audio) {
       <div class="title">설정 <span class="close">✕</span></div>
       ${rows}
       <label class="row"><span>음소거</span><input type="checkbox" class="mute" ${audio.isMuted() ? 'checked' : ''}><b class="val"></b></label>
-      <div class="hint">배경음 파일은 public/audio/ 에 bgm_calm.mp3 · bgm_eerie.mp3 · bgm_stream.mp3 로 넣으면 자동 재생됩니다. 지금 나는 소리는 전부 코드로 만든 것입니다.</div>
+      <div class="keys">
+        <div class="keysTitle">단축키</div>
+        <div class="keyRow"><span><kbd>방향키</kbd> / <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></span><span>이동</span></div>
+        <div class="keyRow"><span><kbd>Shift</kbd></span><span>달리기</span></div>
+        <div class="keyRow"><span><kbd>E</kbd></span><span>상호작용 · 대화 넘기기 · 선택 확정</span></div>
+        <div class="keyRow"><span><kbd>Esc</kbd></span><span>방송 종료 · 취소</span></div>
+        <div class="keyRow"><span><kbd>↑</kbd><kbd>↓</kbd> / <kbd>1</kbd>~<kbd>3</kbd></span><span>선택지 고르기</span></div>
+        <div class="keyRow"><span><kbd>←</kbd><kbd>→</kbd> <kbd>↑</kbd><kbd>↓</kbd></span><span>다이얼 자리 이동 · 숫자 돌리기</span></div>
+        <div class="keyRow"><span><kbd>O</kbd></span><span>설정 열기/닫기</span></div>
+        <div class="keyRow"><span><kbd>M</kbd></span><span>음소거</span></div>
+        <div class="keyRow"><span><kbd>R</kbd></span><span>엔딩 뒤 처음부터 · 게임 오버 뒤 다시 시작</span></div>
+      </div>
     </div>`;
   document.body.appendChild(el);
 

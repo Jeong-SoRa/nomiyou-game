@@ -12,14 +12,19 @@ import { createInteractPrompt } from './ui/interactPrompt.js';
 import { createGameScreen } from './ui/gameScreen.js';
 import { createNotice } from './ui/notice.js';
 import { createChickTalker, tierIndexForDay } from './systems/chickDialogue.js';
-import { createDayPlan, HINTS, HINTS_FOR_DAY, LAST_DAY } from './systems/dayPlan.js';
+import { createDayPlan, LAST_DAY } from './systems/dayPlan.js';
+import { createDial } from './ui/dial.js';
+import { createConfirm } from './ui/confirm.js';
+import { createTitle } from './ui/title.js';
+import { createCompass } from './ui/compass.js';
 import { createCastleGame } from './game/castle.js';
 import { createScare } from './systems/scare.js';
 import { createAudio } from './systems/audio.js';
 import { createSettings } from './ui/settings.js';
 
-// 디버그용 URL 파라미터: ?world=forest, ?viadoor=1, ?keys=KeyW,ShiftLeft, ?horror=1, ?sit=1, ?stream=1|now, ?day=N, ?done=stream,recruit,
-//   ?companion=1, ?talk=1, ?cam=x,y,z, ?at=x,z, ?yaw=&dist=&height=, ?steps=N, ?gkeys=ArrowLeft, ?gat=x,y[,dir], ?ginv=cup,cupWater,a,b, ?water=1, ?pickaxe=1, ?smash=1|hits|chop|statue|warn|choice|rubble|monster, ?monster=1|거리, ?mcam=side,up,front[,aim],
+// 디버그용 URL 파라미터: ?world=forest, ?viadoor=1, ?keys=KeyW,ShiftLeft, ?horror=1, ?sit=1, ?stream=1|now, ?day=N, ?done=stream,berries,
+//   ?flags=noteFound,ghostMet,hasBarnKey,hasDoll,hasAmpoule,statueSeen,crateRevealed,canWater (게임 상태 플래그를 켜고 시작), ?chase=1 (숲에서 2일차 괴물 추격 바로 시작),
+//   ?talk=1, ?cam=x,y,z, ?at=x,z, ?yaw=&dist=&height=, ?steps=N, ?gkeys=ArrowLeft, ?gat=x,y[,dir], ?ginv=cup,cupWater,a,b, ?water=1, ?pickaxe=1, ?smash=1|hits|chop|statue|warn|choice|rubble|monster, ?monster=1|거리, ?mcam=side,up,front[,aim],
 //   ?ending=bad|true (분기 직후 인게임 장면부터), ?epilogue=1 (진엔딩 에필로그 방부터, &board=1 이면 바로 보드 줌인), ?credits=true|bad, ?noopen=1 (오프닝 인사 생략)
 const params = new URLSearchParams(location.search);
 
@@ -75,23 +80,39 @@ function makeChickRecord(char, pos, extra = {}) {
     ...extra,
   };
 }
-// 동행 파닥이: 3·5·6·7일차에 방 안 파닥이에게 말을 걸면 노미요를 따라 숲까지 같이 간다 (월드 전환 시 다시 생성)
-let companion = null; // { scale }
 
 // ---------- 날짜 / 하루 일정 ----------
 // 하루는 침대에서 잠을 자야 지나간다. 그날의 일정(plan)을 다 끝내야 잘 수 있다.
 let day = Math.max(1, Math.min(LAST_DAY, parseInt(params.get('day') || '1', 10) || 1));
 const plan = createDayPlan(day);
 const notice = createNotice();
+// 일차 진행 상태 플래그 (docs/game_timeline.md). 날이 바뀌어도 유지된다
+const flags = {
+  canWater: false, // 물조리개에 물이 있는지 (2일차: 우물에서 채운다)
+  noteFound: false, // 3일차 지하 1층 석탑 문 너머의 쪽지를 봤는지 → 숲 북쪽 헛간의 필터가 벗겨진다
+  barnRevealed: false, // 석탑 사이를 지나 헛간을 봤는지
+  ghostMet: false, // 4일차 지하 2층 화장실에서 파닥이 유령을 만났는지 → 우물 두레박에서 열쇠
+  hasBarnKey: false,
+  barnOpened: false, // 열쇠로 헛간 문을 열었는지
+  hasDoll: false, // 헛간의 노미요 인형
+  hasAmpoule: false, // 5일차 '휴대용 v3 앰플'
+  statueSeen: false, // 파닥 동상을 관찰해 다이얼을 알아챘는지
+  crateRevealed: false, // 동상에 150105 를 넣어 나무 상자가 드러났는지
+};
+let eatenBerries = new Set(); // 오늘 먹은 포도송이 (나무 index)
 function setDay(n) {
   day = n;
   dayEl.textContent = `DAY ${day}`;
   plan.setDay(n);
+  eatenBerries = new Set();
+  // 앞서 끝낸 일은 그날의 할 일에서도 완료로 친다
+  if (flags.hasDoll) plan.complete('doll');
+  if (flags.crateRevealed) plan.complete('crate');
 }
 setDay(day);
-// 고성 게임 속 파닥이가 보이는 정도: 1일차 안 보임 → 2~4일차 얼핏얼핏 → 5일차부터 또렷(대화 가능)
+// 고성 게임 속 파닥이 실루엣이 보이는 정도: 1일차 안 보임 → 3일차부터 조금씩 (1 미만이라 말은 걸 수 없다)
 function presenceFor(d) {
-  return horror ? 1 : ([0, 0, 0.2, 0.45, 0.7][d] ?? 1);
+  return horror ? 0.9 : ([0, 0, 0, 0.3, 0.5, 0.75, 0.9][d] ?? 0.9);
 }
 // 날짜에 따른 으스스함 (4일차부터 방/숲이 붉고 어두워지며 7일차에 최대). 공포 모드(H)면 1
 function dreadFor(d) {
@@ -117,7 +138,6 @@ let sessionChicks = []; // [{ worldName, position: Vector3, scale }]
 let cutscene = false; // 엔딩 연출 중: 이동·상호작용·키 입력 잠금
 let epilogue = false; // 진엔딩 에필로그(방): 파닥이 없는 방에서 채팅 보드를 보고 잠들면 끝
 let boardRead = false; // 에필로그에서 채팅 보드를 들여다봤는지
-let collectedHints = new Set();
 
 // ---------- 월드 로딩 / 전환 ----------
 const worldFactories = { house: createHouse, forest: createForest };
@@ -159,12 +179,6 @@ function loadWorld(name, { viaDoor = false } = {}) {
   if (!epilogue) world.chickSpawns.forEach((pos, i) => addChick(pos, chickScales[i % chickScales.length])); // 에필로그의 방엔 파닥이가 없다
   // 방송으로 생성된 파닥이 복원 (이 월드에 속한 것만)
   for (const rec of sessionChicks.filter((r) => r.worldName === name)) addChick(rec.position, rec.scale);
-  // 동행 파닥이는 노미요 옆에서 다시 시작
-  if (companion) {
-    const pos = fox.group.position.clone();
-    pos.x += Math.cos(foxState.heading) * 1.2;
-    addChick(pos, companion.scale, { follow: true });
-  }
   applyDayProps();
 
   // 카메라를 여우 뒤쪽으로 재배치 (스폰 지점별로 거리/높이 지정 가능)
@@ -185,15 +199,15 @@ function loadWorld(name, { viaDoor = false } = {}) {
 function applyDayProps() {
   const p = world.props;
   if (!p) return;
-  p.grapes.group.visible = true;
-  p.grapes.bunches.visible = plan.has('grapes') && !plan.isDone('grapes');
-  p.bush.group.visible = true;
-  p.soundSpot.group.visible = day >= 4;
-  const todays = HINTS_FOR_DAY[day] ?? [];
-  for (const h of p.hints) h.group.visible = todays.includes(h.index) && !collectedHints.has(h.index);
-  // 커다란 나무 상자는 항상 보인다. 곡괭이는 힌트를 다 모은 뒤(7일차) 아직 줍지 않았을 때만
-  p.crate.group.visible = true;
-  p.pickaxe.group.visible = plan.has('pickaxe') && !plan.isDone('pickaxe');
+  // 포도송이: 오늘 먹을 것이 있으면 아직 안 먹은 송이가 나무에 달려 있다
+  for (const b of p.berries.items) b.group.visible = plan.has('berries') && !plan.isDone('berries') && !eatenBerries.has(b.index);
+  // 파닥 동상은 비밀번호를 맞히기 전까지, 나무 상자는 그 뒤에 (같은 자리)
+  p.statue.group.visible = !flags.crateRevealed;
+  p.crate.group.visible = flags.crateRevealed;
+  // 헛간: 3일차 쪽지를 본 뒤 석탑 사이를 지나야 보인다
+  p.barn.group.visible = flags.barnRevealed;
+  if (flags.hasBarnKey && flags.barnOpened) p.barn.open();
+  if (flags.hasDoll) p.barn.takeDoll();
 }
 
 let transitioning = false;
@@ -234,9 +248,11 @@ function setHorror(on) {
   if (!on) fox.setExpression('dot');
 }
 
-// 디버그: 오늘 일정 일부를 끝낸 상태로 시작 (?done=stream,recruit) / 동행 파닥이와 시작 (?companion=1)
+// 디버그: 오늘 일정 일부를 끝낸 상태로 시작 (?done=stream,berries) / 상태 플래그 켜고 시작 (?flags=noteFound,hasDoll)
 for (const id of (params.get('done') || '').split(',')) if (id) plan.complete(id);
-if (params.has('companion')) companion = { scale: 0.6 };
+for (const f of (params.get('flags') || '').split(',')) if (f in flags) flags[f] = true;
+if (flags.hasDoll) plan.complete('doll');
+if (flags.crateRevealed) plan.complete('crate');
 
 loadWorld(params.get('world') === 'forest' ? 'forest' : 'house', { viaDoor: params.has('viadoor') }); // ?viadoor=1: 문으로 들어온 위치/방향으로 시작
 setHorror(params.has('horror'));
@@ -256,8 +272,16 @@ if (params.has('yaw') || params.has('dist') || params.has('height')) {
 const keys = new Set();
 const audio = createAudio();
 const settings = createSettings(audio);
+const dial = createDial(); // 6자리 다이얼 (숲의 동상 / 고성 지하 3층 문 공용)
+const confirmBox = createConfirm(); // 시스템 메시지 선택창 (숲/방)
+const title = createTitle(); // 시작 화면 (시작하기 / 이어하기)
 window.addEventListener('keydown', (e) => {
   audio.unlock(); // 브라우저 정책상 첫 키 입력 뒤에야 소리를 낼 수 있음
+  if (title.isOpen()) {
+    if (e.code.startsWith('Arrow')) e.preventDefault();
+    title.keydown(e.code);
+    return;
+  }
   if (e.code === 'KeyO' || (e.code === 'Escape' && settings.isOpen())) {
     settings.toggle();
     return;
@@ -266,6 +290,19 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyM') {
     notice.show(audio.toggleMute() ? '음소거' : '소리 켜짐', 1.5);
     settings.syncMute();
+  }
+  if (dial.isOpen()) {
+    if (e.code.startsWith('Arrow')) e.preventDefault();
+    dial.keydown(e.code);
+    return;
+  }
+  if (confirmBox.isOpen()) {
+    confirmBox.keydown(e.code);
+    return;
+  }
+  if (gameOver) {
+    if (e.code === 'KeyR' || e.code === 'Enter') restartDay();
+    return;
   }
   if (ending) {
     if (e.code === 'KeyR') location.reload();
@@ -280,6 +317,7 @@ window.addEventListener('keydown', (e) => {
   // 게임 화면이 켜져 있으면 키 입력은 미니게임으로. Esc 만 접속 종료 (단, 엔딩 인게임 장면에선 Esc 로 빠져나가지 못한다)
   if (castle.isActive()) {
     if (e.code === 'Escape') {
+      if (castle.cancelChoice()) return; // 소지품 선택창이 열려 있으면 그것만 닫는다
       if (!endingStream) endStream();
     } else castle.keydown(e.code);
     if (e.code.startsWith('Arrow') || e.code === 'Space') e.preventDefault();
@@ -323,6 +361,7 @@ function standUp() {
 
 // ---------- 상호작용 (E) ----------
 const prompt = createInteractPrompt();
+const compass = createCompass(); // 숲에 있을 때만 표시
 const tmpPrompt = new THREE.Vector3();
 const near = (spot) =>
   !!spot && Math.hypot(fox.group.position.x - spot.approach.x, fox.group.position.z - spot.approach.z) <= spot.radius;
@@ -337,8 +376,7 @@ const facingTarget = (target) => {
   const diff = Math.atan2(Math.sin(Math.atan2(dx, dz) - foxState.heading), Math.cos(Math.atan2(dx, dz) - foxState.heading));
   return Math.abs(diff) <= FACE_CONE;
 };
-const walking = () => !streaming && !transitioning && !foxState.sitting;
-const hasCompanion = () => chicks.some((c) => c.follow);
+const walking = () => !streaming && !transitioning && !foxState.sitting && !gameOver && !dial.isOpen() && !confirmBox.isOpen() && !title.isOpen();
 
 // 파닥이에게 말 걸기: 가까운(TALK_RADIUS) 파닥이 중 가장 가까운 것. 말하는 중이면 제외
 const TALK_RADIUS = 2.4;
@@ -359,10 +397,10 @@ function nearestChick() {
 
 /**
  * 지금 E 를 누르면 할 수 있는 것 하나를 고른다 (안내 라벨 + 위치 + 실행 함수).
- * 우선순위: 방송 화면 진입 대기 > 데스크 > 침대 > 숲 소품 > 파닥이
+ * 우선순위: 방송 화면 진입 대기 > 데스크 > 침대 > 화분 > 숲 소품 > 파닥이
  */
 function currentAction() {
-  if (transitioning || choiceOpen || ending || crateOpened || cutscene) return null;
+  if (transitioning || choiceOpen || ending || crateOpened || cutscene || gameOver) return null;
   if (streaming && introReady && !castle.isActive()) {
     return { label: '계속하기', at: tmpPrompt.copy(fox.group.position).setY(3.4), run: enterGame };
   }
@@ -373,16 +411,21 @@ function currentAction() {
   if (near(world.plant) && performance.now() >= busyUntil) return { label: '물주기', at: world.plant.prompt, run: waterPlant };
   const p = world.props;
   if (p) {
-    if (nearProp(p.grapes) && plan.pending('grapes')) return { label: '포도 따 먹기', at: p.grapes.prompt, run: eatGrapes };
-    if (nearProp(p.bush) && plan.pending('forest_check')) return { label: '풀숲 확인하기', at: p.bush.prompt, run: checkBush };
-    if (nearProp(p.soundSpot) && plan.pending('sound_check')) return { label: '소리 확인하기', at: p.soundSpot.prompt, run: checkSound };
-    if (plan.pending('hints')) {
-      const h = p.hints.find((h) => nearProp(h));
-      if (h) return { label: '힌트 줍기', at: h.prompt, run: () => pickHint(h) };
+    if (plan.pending('berries')) {
+      const b = p.berries.items.find((b) => nearProp(b));
+      if (b) return { label: '포도 따 먹기', at: b.prompt, run: () => eatBerry(b) };
     }
-    if (nearProp(p.pickaxe) && plan.pending('pickaxe')) return { label: '곡괭이 집기', at: p.pickaxe.prompt, run: takePickaxe };
+    if (nearProp(p.well)) return { label: '우물을 사용할까요?', at: p.well.prompt, run: useWell };
+    if (nearProp(p.barn)) {
+      if (flags.barnOpened && !flags.hasDoll) return { label: '인형 살펴보기', at: p.barn.prompt, run: takeDoll };
+      if (!flags.barnOpened) return { label: '헛간 문 열기', at: p.barn.prompt, run: openBarn };
+    }
+    if (nearProp(p.statue) && facingTarget(p.statue.group.position)) {
+      if (flags.statueSeen) return { label: '다이얼 돌리기', at: p.statue.prompt, run: useStatueDial };
+      return { label: '동상 보기', at: p.statue.prompt, run: observeStatue };
+    }
     if (nearProp(p.crate) && !crateOpened && facingTarget(p.crate.group.position)) {
-      if (plan.pending('escape')) return { label: `상자 부수기 ${crateHits}/${p.crate.HITS}`, at: p.crate.prompt, run: hitCrate };
+      if (hasPickaxe) return { label: `상자 부수기 ${crateHits}/${p.crate.HITS}`, at: p.crate.prompt, run: hitCrate };
       return { label: '상자 살펴보기', at: p.crate.prompt, run: inspectCrate };
     }
   }
@@ -420,44 +463,37 @@ function playOpening() {
 }
 
 // ---------- 화분 물주기 (창문 옆 큰 화분) ----------
+// 물조리개는 비어 있다. 2일차에 숲의 우물에서 물을 떠 와야 줄 수 있다
 let busyUntil = 0; // 짧은 동작(물주기) 중에는 이동/상호작용 금지 (ms 타임스탬프)
-const WATER_LINES = ['물 먹고 쑥쑥 자라라~', '오늘도 싱싱하네.', '잎이 반짝반짝해졌다.', '...너는 참 조용해서 좋아.'];
 const tmpWaterDir = new THREE.Vector3();
+let waterHintSaid = false;
 function waterPlant(dur = 1.6) {
   const p = world.plant;
   if (!p) return;
+  if (!flags.canWater) {
+    audio.sfx.deny();
+    notice.show('물조리개에 물이 없습니다.', 3);
+    if (!waterHintSaid) {
+      waterHintSaid = true;
+      setTimeout(() => fox.say('물이 없네. 나가서 물을 떠오자.', 2.6), 600);
+    }
+    return;
+  }
   busyUntil = performance.now() + dur * 1000 + 150;
   faceTarget(p.position);
   fox.water(dur);
   p.water(() => fox.spoutWorld(tmpWaterDir), dur); // 물은 물뿌리개 주둥이(월드 좌표)에서 나온다
   audio.sfx.water(dur);
-  setTimeout(() => fox.say(WATER_LINES[Math.floor(Math.random() * WATER_LINES.length)], 1.9), dur * 1000 - 200);
+  flags.canWater = false;
+  plan.complete('water');
+  setTimeout(() => fox.say('물 먹고 쑥쑥 자라라~', 1.9), dur * 1000 - 200);
 }
 
 const scare = createScare({ flashEl: document.getElementById('scareFlash'), silent: params.has('silent') }); // ?silent=1: 스케어 효과음 생략 (헤드리스 테스트)
 
-// 동행 요청 대사 (recruit): 날짜별
-const RECRUIT_LINES = {
-  3: ['밖에서... 눈이 빨간 무서운 걸 봤어.', '같이 가서 확인해 줄래? 혼자는 무서워.'],
-  5: ['탈출 지점 힌트 말이야, 숲에 흩어져 있대.', '같이 찾으러 가자. 나도 갈게.'],
-  6: ['남은 힌트도 찾으러 가자.', '이번엔 꼭 다 모으자.'],
-  7: ['...노미요. 오늘이야.', '곡괭이를 찾아서, 그 상자까지 같이 가 줄래?'],
-};
 function talkTo(c) {
   const g = c.char.group;
   c.heading = Math.atan2(fox.group.position.x - g.position.x, fox.group.position.z - g.position.z);
-  // 오늘 동행이 필요한데 아직 안 했으면: 이 파닥이가 동행이 된다
-  if (plan.pending('recruit') && !c.follow) {
-    const lines = RECRUIT_LINES[day] ?? ['같이 가자.'];
-    c.wait = 99;
-    sayLines(c.char, lines, () => {
-      c.follow = true;
-      companion = { scale: c.char.group.scale.x };
-      plan.complete('recruit');
-      fox.say('그래, 같이 가자.', 2);
-    });
-    return;
-  }
   const line = c.talker.next(day, { horror });
   c.char.say(line.text, line.duration, { scare: line.scare });
   audio.sfx.babble(line.text.length, line.scare ? { base: 300, spread: 500, rate: 0.05 } : {});
@@ -483,66 +519,236 @@ function sayLines(char, lines, onDone) {
 }
 
 // ---------- 날짜 이벤트: 숲 ----------
-function eatGrapes() {
-  world.props.grapes.bunches.visible = false;
+/** 나무의 포도송이: "포도를 먹을까요?" 를 물은 뒤 먹는다 */
+function eatBerry(b) {
+  faceTarget(b.position);
+  confirmBox.ask('포도를 먹을까요?', ['예', '아니오'], (i) => {
+    audio.sfx.ui();
+    if (i === 0) eatBerryNow(b);
+  }, { hover: () => audio.sfx.talk() });
+}
+function eatBerryNow(b) {
+  eatenBerries.add(b.index);
+  b.group.visible = false;
+  const n = plan.advance('berries');
+  const total = plan.tasks().find((t) => t.id === 'berries')?.count ?? 3;
   audio.sfx.eat();
-  plan.complete('grapes');
   fox.setExpression('happy');
-  sayLines(fox, ['냠냠... 달다!', '이제 배 안 고파.'], () => fox.setExpression('dot'));
+  const done = plan.isDone('berries');
+  // 노미요가 "냠냠" 하고 조금 뒤에 먹은 개수를 안내문(침대 안내와 같은 창)으로 보여준다
+  sayLines(fox, done ? ['냠냠... 달다!', '이제 배 안 고파.'] : ['냠냠.'], () => fox.setExpression('dot'));
+  setTimeout(() => notice.show(`포도 먹기 (${Math.min(n, total)}/${total})`), 1400);
 }
-function checkBush() {
-  if (!hasCompanion()) return fox.say('파닥이랑 같이 와야겠어.', 2.2);
-  const p = world.props;
-  fox.say('...아무것도 없는데?', 2);
+/** 우물: 물조리개를 채운다 (2일차엔 그 직후 괴물 추격). 4일차 유령을 만난 뒤엔 두레박에서 열쇠가 나온다 */
+function useWell() {
+  faceTarget(world.props.well.group.position);
+  confirmBox.ask('우물을 사용할까요?', ['예', '아니오'], (i) => {
+    audio.sfx.ui();
+    if (i !== 0) return;
+    if (flags.ghostMet && !flags.hasBarnKey) {
+      // 4일차: 두레박에서 열쇠
+      flags.hasBarnKey = true;
+      audio.sfx.pickup();
+      notice.show('두레박을 끌어올렸다.\n두레박에 낡은 열쇠가 걸려 있다.\n열쇠를 손에 넣었다.', 4);
+      setTimeout(() => fox.say('어디 열쇠지?', 2), 1200);
+      return;
+    }
+    audio.sfx.water(1.2);
+    const chaseToday = plan.pending('water') && !flags.canWater; // 2일차: 물조리개를 채우면 괴물이 나타난다
+    flags.canWater = true; // 어느 날이든 물조리개를 채울 수 있다
+    notice.show('두레박을 끌어올렸다.\n시원해보이는 물이다.\n물조리개에 물을 담았다.', 4);
+    if (chaseToday) setTimeout(startChase, 1800);
+  }, { hover: () => audio.sfx.talk() });
+}
+/** 3일차 쪽지를 본 뒤 석탑 사이를 지나면: 화면이 지지직 깨지며 헛간이 드러난다 (필터 제거) */
+function revealBarn() {
+  flags.barnRevealed = true;
+  cutscene = true;
+  foxState.velocity.set(0, 0, 0);
+  glitchEl.classList.remove('on');
+  void glitchEl.offsetWidth;
+  glitchEl.classList.add('on');
+  audio.sfx.static(1.1);
+  scare.trigger({ shake: 0.7, flash: false, sound: false });
   setTimeout(() => {
-    // 나무 사이에서 붉은 눈 두 개가 잠깐 나타났다 사라짐
-    p.redEyes.show(new THREE.Vector3(-11, 1.3, 13), 2.6);
-    scare.trigger({ shake: 0.5, flash: false, sound: false });
-    const buddy = chicks.find((c) => c.follow);
-    if (!buddy) return plan.complete('forest_check');
-    buddy.char.setExpression('stern');
-    sayLines(buddy.char, ['저, 저기...!', '...사라졌어. 봤지? 눈이 빨갰어.'], () => {
-      buddy.char.setExpression(horror ? 'stern' : 'dot');
-      fox.say('...일단 집으로 돌아가자.', 2.4);
-      plan.complete('forest_check');
-    });
-  }, 1800);
+    world.props.barn.group.visible = true;
+    scare.trigger({ shake: 0.3, flash: false, sound: false });
+    faceTarget(world.props.barn.group.position);
+    sayLines(fox, ['...뭐야? 헛간?', '여기 이런 게 있었나?'], () => (cutscene = false));
+  }, 700);
 }
-function checkSound() {
-  fox.say('...아무도 없네. 바람 소리뿐이야.', 2.6);
-  setTimeout(() => scare.knock({ count: 2, gap: 0.4, volume: 0.25 }), 2200); // 아주 멀리서 두 번
-  setTimeout(() => {
-    fox.say('...기분 탓이겠지. 들어가자.', 2.4);
-    plan.complete('sound_check');
-  }, 3200);
+function openBarn() {
+  const b = world.props.barn;
+  faceTarget(b.group.position);
+  if (!flags.hasBarnKey) {
+    audio.sfx.deny();
+    return sayLines(fox, ['자물쇠가 걸려 있다.', '열쇠가 있어야겠어.']);
+  }
+  flags.barnOpened = true;
+  audio.sfx.door();
+  b.open();
+  sayLines(fox, ['열쇠가 맞았다. 끼익—', '...안에 뭐가 있지?']);
 }
-function pickHint(h) {
-  if (!hasCompanion()) return fox.say('파닥이랑 같이 찾기로 했잖아.', 2.2);
-  collectedHints.add(h.index);
-  h.group.visible = false;
+function takeDoll() {
+  flags.hasDoll = true;
+  plan.complete('doll');
+  world.props.barn.takeDoll();
   audio.sfx.pickup();
-  fox.say(`"${HINTS[h.index]}"`, 3.2);
-  plan.advance('hints');
+  fox.setExpression('happy');
+  sayLines(fox, ['나 닮았네. 들고가서 방송에서 자랑해야지'], () => fox.setExpression('dot'));
+}
+/** 숲 남쪽 끝의 금색 파닥 동상: 보고 나서 관찰하면 배 아래의 6자리 다이얼을 알아챈다 */
+function observeStatue() {
+  const st = world.props.statue;
+  faceTarget(st.group.position);
+  fox.setExpression('happy');
+  fox.say('우와, 아기 파닥이 멋있네.', 2.4);
+  setTimeout(() => {
+    fox.setExpression('dot');
+    confirmBox.ask('관찰하시겠습니까?', ['예', '아니오'], (i) => {
+      audio.sfx.ui();
+      if (i !== 0) return;
+      flags.statueSeen = true;
+      sayLines(fox, ['...배 아래에 뭔가 있다.', '6자리 비밀번호 다이얼이네.', '뭘 넣으라는 거지?']);
+    }, { hover: () => audio.sfx.talk() });
+  }, 1400);
+}
+function useStatueDial() {
+  const st = world.props.statue;
+  faceTarget(st.group.position);
+  dial.show({
+    title: '파닥 동상의 다이얼',
+    tick: () => audio.sfx.talk(),
+    onSubmit: (code) => {
+      if (code !== '150105') {
+        audio.sfx.deny();
+        fox.say('...아무 일도 없네.', 2);
+        return;
+      }
+      revealCrate();
+    },
+  });
+}
+/** 정답: 화면이 깨지며(필터 제거) 동상이 사라지고 그 자리에 커다란 나무 상자가 드러난다 */
+function revealCrate() {
+  flags.crateRevealed = true;
+  plan.complete('crate');
+  cutscene = true;
+  glitchEl.classList.remove('on');
+  void glitchEl.offsetWidth;
+  glitchEl.classList.add('on');
+  audio.sfx.static(1.2);
+  scare.trigger({ shake: 0.9, flash: false, sound: false });
+  setTimeout(() => {
+    applyDayProps();
+    scare.trigger({ shake: 0.4, flash: false, sound: false });
+    sayLines(fox, ['나무상자? 이게 뭐지? 이제 어떡하지?'], () => {
+      // 가장 가까운 숲의 파닥이가 대답한다
+      let c = null;
+      let best = Infinity;
+      for (const r of chicks) {
+        const d = r.char.group.position.distanceTo(fox.group.position);
+        if (d < best) {
+          best = d;
+          c = r;
+        }
+      }
+      if (!c) return (cutscene = false);
+      c.wait = 99;
+      c.heading = Math.atan2(fox.group.position.x - c.char.group.position.x, fox.group.position.z - c.char.group.position.z);
+      sayLines(c.char, ['거의 다 왔다. 일단은 돌아갈까? 자고 생각하자.'], () => {
+        c.wait = rand(1, 3);
+        cutscene = false;
+      });
+    });
+  }, 800);
 }
 
-// ---------- 숲 깊은 곳의 나무 상자 ----------
-// 1일차부터 보이지만 손으로는 열 수 없다. 7일차에 곡괭이를 찾아 부수면 안에서 '좋아요' 석상이 드러나고 엔딩 분기가 열린다
+// ---------- 2일차: 우물에서 물을 채우고 나오면 괴물이 나타나 쫓아온다 (잡히면 엔딩 4) ----------
+let chase = null; // { rec }
+let gameOver = false; // 엔딩 4 화면 표시 중 (R/Enter 또는 버튼으로 그날 처음부터)
+const CHASE_SPEED = 4.2; // 걷기(3.2)보다 빠르고 달리기(6)보다 느리다
+const CATCH_DIST = 1.2;
+const gameOverEl = document.getElementById('gameOver');
+function startChase() {
+  if (chase || world.group.name !== 'forest') return;
+  const w = world.props.well.group.position;
+  // 우물 뒤쪽(오두막 반대편)에서 나타난다
+  const dir = new THREE.Vector3().subVectors(w, world.door.position).setY(0).normalize();
+  const pos = w.clone().addScaledVector(dir, 5);
+  const heading = Math.atan2(fox.group.position.x - pos.x, fox.group.position.z - pos.z);
+  const rec = spawnMonster(pos, heading, { scale: MONSTER_SCALE, grow: 0.9 });
+  chase = { rec };
+  scare.scream({ seconds: 1.4 });
+  scare.trigger({ shake: 1.0, flash: true, sound: false });
+  fox.setExpression('dot');
+  setTimeout(() => fox.say('...뭐야, 저거?! 도, 도망쳐야 해!', 2.2), 300);
+}
+function updateChase(dt) {
+  if (!chase) return;
+  const m = chase.rec.char.group;
+  const dx = fox.group.position.x - m.position.x;
+  const dz = fox.group.position.z - m.position.z;
+  const d = Math.hypot(dx, dz);
+  if (d > CATCH_DIST) {
+    m.position.x += (dx / d) * CHASE_SPEED * dt;
+    m.position.z += (dz / d) * CHASE_SPEED * dt;
+    confine(m.position, 0.9, world.bigObstacles ?? world.obstacles);
+  } else if (!gameOver && !transitioning) caughtByMonster();
+}
+function endChase() {
+  if (!chase) return;
+  scene.remove(chase.rec.char.group);
+  const i = monsters.indexOf(chase.rec);
+  if (i >= 0) monsters.splice(i, 1);
+  chase = null;
+}
+/** 엔딩 4 (게임 오버): 괴물에게 잡힘 → 붉은 화면 → 다시 시작 버튼 */
+function caughtByMonster() {
+  gameOver = true;
+  cutscene = true;
+  keys.clear();
+  scare.scream({ seconds: 2.0 });
+  scare.trigger({ shake: 1.6, flash: true, sound: true });
+  fox.say('...!', 1.2);
+  setTimeout(() => {
+    blackFade(true);
+    setTimeout(() => {
+      gameOverEl.classList.add('on');
+      blackFade(false);
+    }, params.has('nofade') ? 0 : 900);
+  }, 1100);
+}
+/** 죽은 날의 처음부터: 그날 할 일과 그날 얻은 것을 되돌리고 침대 옆에서 다시 일어난다 */
+function restartDay() {
+  gameOverEl.classList.remove('on');
+  endChase();
+  gameOver = false;
+  cutscene = false;
+  flags.canWater = false;
+  waterHintSaid = false;
+  fadeThen(
+    () => {
+      setDay(day);
+      loadWorld('house');
+      fox.group.position.copy(world.bed.approach);
+      controls.target.copy(fox.group.position).y += 1.4;
+      camera.position.copy(controls.target).add(new THREE.Vector3(-6, 3.6, 5));
+      const wake = WAKE_LINES[day];
+      if (wake) setTimeout(() => sayLines(fox, wake), 1200);
+    },
+    { hold: 600 }
+  );
+}
+gameOverEl.querySelector('.btn').addEventListener('click', () => gameOver && restartDay());
+
+// ---------- 숲 남쪽의 나무 상자 ----------
+// 5일차에 동상의 비밀번호를 맞히면 드러난다. 손으로는 열 수 없고, 6일차에 방송(솥)에서 얻은 곡괭이로 부수면 안에서 '좋아요' 석상이 드러나고 엔딩 분기가 열린다
 let crateOpened = false; // true 면 상자 연출(컷신) 중: 이동/상호작용 잠금
 let hasPickaxe = false;
 function inspectCrate() {
   audio.sfx.deny();
-  if (day >= LAST_DAY && !hasPickaxe) return sayLines(fox, ['힌트가 말한 상자야.', '...곡괭이. 곡괭이를 먼저 찾아야 해.']);
-  if (day >= 5) return sayLines(fox, ['힌트가 말한 상자가 이거구나.', '손으로는 안 돼. 부술 게 필요해.']);
-  sayLines(fox, ['엄청 큰 상자네... 내 키 두 배는 되겠다.', '...꿈쩍도 안 해. 안에 뭐가 들었을까.']);
-}
-function takePickaxe() {
-  if (!hasCompanion()) return fox.say('파닥이랑 같이 가기로 했잖아.', 2.2);
-  hasPickaxe = true;
-  world.props.pickaxe.group.visible = false;
-  audio.sfx.pickup();
-  plan.complete('pickaxe');
-  fox.setTool(true); // 곡괭이를 손에 쥔 모습으로
-  sayLines(fox, ['...정말 있었어. 곡괭이.', '가자. 숲 깊은 곳의 상자로.']);
+  sayLines(fox, ['엄청 큰 상자네... 내 키 두 배는 되겠다.', '...꿈쩍도 안 해. 손으로는 안 되겠어.']);
 }
 
 // ---------- 7일차: 상자를 부수다 → 석상 → 분기 ----------
@@ -578,7 +784,6 @@ function gatherChicks(p, { teleport = false } = {}) {
       c.wait = 99;
     }
   });
-  companion = null;
   return all;
 }
 // 곡괭이질: 여섯 번 E 를 눌러 조금씩 갈라뜨린다. 마지막 타격에 파사삭 흩어지며 석상이 드러난다
@@ -592,7 +797,6 @@ function faceTarget(pos) {
 // 곡괭이를 들어 준비하는 동작(chop 의 windup)이 끝나고 내리찍어 상자에 닿는 순간에만 효과가 나야 하므로,
 // 타격 효과(소리·흔들림·틈 갈라짐/파사삭)는 chop() 과 같은 길이만큼 지연시켜 스윙이 끝나는 순간에 맞춘다.
 function hitCrate() {
-  if (!hasCompanion()) return fox.say('...혼자서는 안 된다고 했어.', 2.4);
   if (!hasPickaxe) return fox.say('곡괭이가 있어야 해.', 2.2);
   const now = performance.now();
   if (now < hitCooldown) return;
@@ -678,7 +882,6 @@ for (const btn of choiceEl.querySelectorAll('.btn')) {
 function resolveChoice(which) {
   choiceOpen = false;
   choiceEl.classList.remove('on');
-  plan.complete('escape');
   cutscene = true;
   const p = world.props.crate;
   if (which === 'release') {
@@ -810,22 +1013,23 @@ function updateMonsters(dt) {
   }
 }
 // ---------- 엔딩 크레딧 ----------
+/** kind: 'true' | 'bad' | 'same'(엔딩 3 — 내일도 오늘도 같은 하루) */
 function rollCredits(kind) {
   ending = kind;
   cutscene = true;
   sysWarnEl.classList.remove('on', 'dock');
   bangEl.classList.remove('on');
-  endingEl.classList.remove('true', 'bad');
+  endingEl.classList.remove('true', 'bad', 'same');
   endingEl.classList.add('on', kind);
   const cr = endingEl.querySelector('.credits');
   const blk = (role, who) => `<div class="blk"><div class="role">${role}</div><div class="who">${who}</div></div>`;
   cr.innerHTML =
-    `<div class="blk"><div class="ttl">노미요의 숲</div></div>` +
+    `<div class="blk"><div class="ttl">노미요의 숲</div>${kind === 'same' ? '<div class="endName">엔딩 3 · 내일도 오늘도 같은 하루</div>' : ''}</div>` +
     blk('출연', '노미요<br>파닥이들<br>' + (kind === 'true' ? '' : '숲의 괴물<br>') + '고성의 괴물') +
     blk('기획 및 제작', 'weyong') +
     blk('그래픽 · 음악 · 효과음', '전부 코드로 그리고 합성함') +
     blk('만든 도구', 'Three.js · Vite') +
-    `<div class="blk last">${kind === 'true' ? '시청해 주셔서 감사합니다.<br>미요미요~' : '보내줘'}</div>` +
+    `<div class="blk last">${kind === 'true' ? '시청해 주셔서 감사합니다.<br>미요미요~' : kind === 'same' ? '내일도 오늘도 같은 하루' : '보내줘'}</div>` +
     `<div class="blk copyright">© 2026 weyong. All rights reserved.</div>` +
     `<div class="blk endHint">R · 처음부터</div>`;
   // 아래에서 위로 올라오다가 마지막 문구(.last)가 화면 가운데에서 멈춘다
@@ -966,7 +1170,6 @@ function startEpilogue() {
     endingStream = null;
     epilogue = true;
     setHorror(false);
-    companion = null;
     sessionChicks = [];
     crateOpened = false;
     cutscene = false;
@@ -1028,13 +1231,13 @@ function epilogueSleep() {
 }
 
 // ---------- 잠자기 (하루 넘기기) ----------
+// 아침 혼잣말: 2일차는 문서의 대사 그대로, 나머지는 분위기용 (docs/game_timeline.md 와 어긋나지 않는 선에서)
 const WAKE_LINES = {
-  2: ['어제 성에서 본 그 쪽지...', '...신경 쓰지 말자. 오늘도 방송 해야지.'],
-  3: ['파닥이가 아까부터 안절부절못하네.', '무슨 일인지 물어봐야겠어.'],
-  4: ['어제는... 좀 이상했어.', '그래도 방송은 해야지.'],
-  5: ['파닥이가 힌트 얘기를 했었지.', '탈출 지점이라니, 뭘까.'],
-  6: ['힌트가 두 개 더 남았댔지.', '파닥이랑 마저 찾아보자.'],
-  7: ['...오늘이야. 아침이 일곱 번 왔어.', '곡괭이를 찾아서, 파닥이랑 그 상자를 열어보자.'],
+  2: ['오늘 날씨가 좋다. 화분에 물 주고 나도 먹을 것 좀 찾아보자.'],
+  3: ['어제 푹 쉬었더니 몸이 가볍네.', '오늘은 지하 1층부터 이어서 해야지.'],
+  4: ['어제 그 쪽지... 자꾸 신경 쓰이네.', '그래도 방송은 해야지.'],
+  5: ['...이상한 꿈을 꾼 것 같아.', '오늘이 마지막 층이라고 했지.'],
+  6: ['...오늘은 뭔가 다르다.', '일단 방송부터 하자.'],
 };
 // 할 일 목록은 따로 보여주지 않는다. 남은 일이 있으면 잠들지 못하고 안내문만 뜬다.
 function trySleep() {
@@ -1052,10 +1255,9 @@ function trySleep() {
   fadeThen(
     () => {
       dayCardEl.classList.add('on');
-      companion = null;
-      collectedHints = new Set();
-      knockHeard = false;
+      waterHintSaid = false;
       setDay(day + 1);
+      saveProgress(); // 이어하기: 새 날의 시작 지점
       // 동행/추가 파닥이 정리 후 침대 옆에서 기상
       loadWorld('house');
       fox.group.position.copy(world.bed.approach);
@@ -1084,35 +1286,59 @@ let reactExprTimeout = 0;
 
 const gameScreen = createGameScreen();
 // 게임 화면 클릭: 대화 넘기기 (E 와 동일)
+// 캔버스는 CSS 로 늘어나므로 마우스 좌표를 캔버스 좌표(640×416)로 되돌린다
+function canvasXY(e) {
+  const r = gameScreen.canvas.getBoundingClientRect();
+  return [((e.clientX - r.left) * gameScreen.canvas.width) / r.width, ((e.clientY - r.top) * gameScreen.canvas.height) / r.height];
+}
 gameScreen.canvas.addEventListener('pointerdown', (e) => {
   if (e.button !== 0) return;
   audio.unlock();
-  if (castle.isActive()) castle.click();
+  if (castle.isActive()) castle.click(...canvasXY(e));
+});
+gameScreen.canvas.addEventListener('pointermove', (e) => {
+  if (castle.isActive()) castle.hover(...canvasXY(e));
 });
 const INTRO_LINE = '미요미요! 파닥이들 안녕. 오늘 할 게임은 미스터리 고성탈출! 수팀 평가 압긍이구요. 기대되네요. 시작할게요!';
 const INTRO_SECONDS = 5.5;
 let introReady = false; // 오프닝 멘트가 끝나 E 로 방송 화면에 들어갈 수 있는 상태
 let streamSession = 0;
-let streamTime = 0; // 게임 화면이 켜진 뒤 흐른 시간 (4일차 노크 타이밍)
-let knockHeard = false;
+let streamTime = 0; // 게임 화면이 켜진 뒤 흐른 시간
 
 const castle = createCastleGame({
   canvas: gameScreen.canvas,
+  dial,
   onEvent: (type, detail = {}) => {
     if (type === 'key') audio.sfx.pickup();
     else if (type === 'fill' || type === 'extinguish') audio.sfx.water();
     else if (type === 'drawer') audio.sfx.ui();
     else if (type === 'floor') {
       audio.sfx.door();
-      gameScreen.setStatus(`지하 ${detail.floor}층으로 내려갔다`);
+      gameScreen.setStatus(`${detail.name}으로 내려갔다`);
     }
     else if (type === 'door') audio.sfx.door();
     else if (type === 'talk') audio.sfx.talk();
-    if (type === 'win') {
+    if (type === 'cleared') {
+      // 5일차: 비밀번호를 맞혀 문이 열리고 인게임 크레딧이 올라간다
       audio.sfx.win();
-      gameScreen.setStatus('탈출 성공!');
-      const cheers = ['탈출 ㅊㅋㅊㅋㅊㅋ', '와아아아아', '노미요 최고!!', 'ㅋㅋㅋㅋ 잘한다', '수팀 평가 인정', '다음 방송 언제요??'];
+      gameScreen.setStatus('고성 탈출!');
+      const cheers = ['탈출 ㅊㅋㅊㅋㅊㅋ', '와아아아아', '노미요 최고!!', 'ㅋㅋㅋㅋ 잘한다', '수팀 평가 인정', '비번 어떻게 안 거임??'];
       cheers.forEach((text, i) => setTimeout(() => streaming && chatLog.addMessage({ name: streamSim.randomViewer(), text }), 250 * i));
+    } else if (type === 'note') {
+      flags.noteFound = true; // 3일차: 숲 북쪽 헛간의 필터가 벗겨질 조건
+      setTimeout(() => streaming && chatLog.addMessage({ name: streamSim.randomViewer(), text: '쪽지 글씨 왜 깨져있음?' }), 1200);
+    } else if (type === 'ghost') {
+      flags.ghostMet = true; // 4일차: 우물 두레박에서 열쇠가 나올 조건
+      ['방금 뭐 지나가지 않았어요??', 'npc 인가?', '소름'].forEach((text, i) =>
+        setTimeout(() => streaming && chatLog.addMessage({ name: streamSim.randomViewer(), text }), 600 + 500 * i)
+      );
+    } else if (type === 'ampoule') {
+      flags.hasAmpoule = true;
+    } else if (type === 'pickaxe') {
+      hasPickaxe = true;
+      fox.setTool(true);
+    } else if (type === 'ending3') {
+      ending3();
     } else if (type === 'exit') {
       endStream(); // 노미요가 마무리 멘트를 마치면 방송 종료 → 방으로
     } else if (type === 'demoend') {
@@ -1121,8 +1347,6 @@ const castle = createCastleGame({
         setTimeout(() => streaming && chatLog.addMessage({ name: streamSim.randomViewer(), text }), 300 + 500 * i)
       );
       setTimeout(startEpilogue, 2600);
-    } else if (type === 'vanish') {
-      setTimeout(() => streaming && chatLog.addMessage({ name: streamSim.randomViewer(), text: '방금 npc 사라진 거 뭐야??' }), 900);
     } else if (type === 'dayend') {
       gameScreen.setStatus('노미요: 오늘 방송은 여기까지');
       ['벌써 끝이에요?', '내일 또 봐요~', '미요미요!!', '잘 자요 노미요'].forEach((text, i) =>
@@ -1185,7 +1409,7 @@ function enterGame() {
     chatLog.setVisible(true);
     gameScreen.setVisible(true);
     gameScreen.setStatus('접속 중...');
-    castle.start({ tier: tierIndexForDay(day, { horror }), presence: presenceFor(day), monster: day >= 2 || horror, skipIntro: params.has('nointro'), at: params.has('gat') ? params.get('gat').split(',').map((v, i) => (i < 2 ? Number(v) : v)) : null, inv: params.has('ginv') ? params.get('ginv').split(',') : null });
+    castle.start({ day, tier: tierIndexForDay(day, { horror }), presence: presenceFor(day), monster: horror, flags, skipIntro: params.has('nointro'), floor: params.has('gfloor') ? parseInt(params.get('gfloor'), 10) : null, at: params.has('gat') ? params.get('gat').split(',').map((v, i) => (i < 2 ? Number(v) : v)) : null, inv: params.has('ginv') ? params.get('ginv').split(',') : null });
     for (const k of (params.get('gkeys') || '').split(',')) if (k) castle.keydown(k); // 디버그: 게임 키 누른 상태로 시작
     streamSim.reset();
     streamTime = 0;
@@ -1202,8 +1426,24 @@ function endStream() {
   if (played) {
     plan.complete('stream');
     // 1일차: 방송을 끝내면 배가 고파 밖으로 나가게 된다
-    if (plan.pending('grapes')) setTimeout(() => sayLines(fox, ['...배고파.', '밖에 나가서 뭐 좀 찾아 먹자.']), 900);
+    if (day === 1 && plan.pending('berries')) setTimeout(() => fox.say('배고픈데 밖에 나가서 먹을 것을 좀 찾아볼까.', 3), 900);
   }
+}
+/** 엔딩 3 (내일도 오늘도 같은 하루): 5일차 오답/거절, 6일차 따라가기 거부 */
+function ending3() {
+  cutscene = true;
+  glitchEl.classList.remove('on');
+  void glitchEl.offsetWidth;
+  glitchEl.classList.add('on');
+  audio.sfx.static(1.2);
+  setTimeout(() => {
+    blackFade(true);
+    setTimeout(() => {
+      stopStreaming({ instant: true });
+      if (foxState.sitting) standUp();
+      rollCredits('same');
+    }, params.has('nofade') ? 0 : 1500);
+  }, 900);
 }
 function stopStreaming({ instant = false } = {}) {
   if (!streaming) return;
@@ -1218,22 +1458,6 @@ function stopStreaming({ instant = false } = {}) {
   if (instant || !gameScreen.el.classList.contains('on')) leave();
   else fadeThen(leave);
   modeEl.textContent = modeLabel();
-}
-
-// 4일차: 방송 중 문 두드리는 소리. 시청자가 먼저 알아채고 노미요는 얼버무린다
-function knockEvent() {
-  knockHeard = true;
-  scare.knock({ count: 4, gap: 0.24, volume: 0.9 });
-  scare.trigger({ shake: 0.45, flash: false, sound: false });
-  const lines = ['방금 무슨 소리 들린 거 같은데?', '쾅쾅 소리 남 ㄷㄷ', '문 두드리는 소리 아님??', '노미요 뒤에 누구 있어요?'];
-  lines.forEach((text, i) => setTimeout(() => streaming && chatLog.addMessage({ name: streamSim.randomViewer(), text }), 1200 + 700 * i));
-  setTimeout(() => {
-    if (!streaming) return;
-    gameScreen.setStatus('노미요: 모르겠어요 하하');
-    fox.say('모르겠어요 하하', 2);
-    setTimeout(() => streaming && gameScreen.setStatus('접속 중...'), 3000);
-  }, 3600);
-  // 방송이 끝나면 밖을 확인하는 일이 열린다 (needs: stream)
 }
 
 function spawnChick(near) {
@@ -1281,13 +1505,39 @@ if (params.has('stream') && world.computer) {
 }
 // ?pickaxe=1 : 곡괭이를 이미 주운 상태
 // ?smash=1 : 상자 앞에서 바로 부수기 시작 / ?smash=statue|warn|choice|rubble : 그 단계의 화면으로 바로 (헤드리스 스크린샷용)
-if (params.has('pickaxe') && world.props) {
+if (params.has('pickaxe')) {
   hasPickaxe = true;
-  plan.complete('pickaxe');
-  applyDayProps();
   fox.setTool(true);
 }
+if (params.has('chase') && world.props) {
+  fox.group.position.copy(world.props.well.position);
+  setTimeout(startChase, 200);
+}
+// ?berry=1 : 첫 번째 포도송이 나무 앞에서 시작 (위치 확인용)
+if (params.has('berry') && world.props) {
+  const b = world.props.berries.items[0];
+  const wp = new THREE.Vector3();
+  b.group.getWorldPosition(wp);
+  const dir = wp.clone().sub(b.position).setY(0).normalize(); // 송이가 달린 쪽
+  const side = new THREE.Vector3(dir.z, 0, -dir.x);
+  fox.group.position.copy(wp).addScaledVector(dir, 2.4).addScaledVector(side, 1.6).setY(0);
+  foxState.heading = Math.atan2(-dir.x, -dir.z);
+  controls.target.copy(wp);
+  camera.position.copy(wp).addScaledVector(dir, 6).addScaledVector(side, -2).setY(3.4);
+}
+// ?status=1 : 여러 줄 안내문 표시 확인용
+if (params.has('status')) setTimeout(() => notice.show('두레박을 끌어올렸다.' + String.fromCharCode(10) + '시원해보이는 물이다.' + String.fromCharCode(10) + '물조리개에 물을 담았다.', 30), 100);
+// ?dial=1 : 동상 다이얼 열고 시작 / ?confirm=1 : 관찰 선택창 / ?gameover=1 : 엔딩 4 화면 (UI 확인용)
+if (params.has('dial')) setTimeout(useStatueDial, 100);
+if (params.has('confirm')) confirmBox.ask('관찰하시겠습니까?', ['예', '아니오'], () => {});
+if (params.has('gameover')) {
+  gameOver = true;
+  cutscene = true;
+  gameOverEl.classList.add('on');
+}
 if (params.has('smash') && world.props) {
+  flags.crateRevealed = true;
+  applyDayProps();
   const p = world.props.crate;
   fox.group.position.copy(p.position);
   foxState.heading = 0;
@@ -1371,7 +1621,68 @@ if (params.has('epilogue')) {
 if (params.has('credits')) setTimeout(() => rollCredits(params.get('credits') === 'true' ? 'true' : 'bad'), 50);
 // 오프닝: 1일차를 방에서 평범하게 시작할 때만 (디버그 파라미터로 다른 장면을 띄울 땐 생략)
 const DEBUG_SCENE_PARAMS = ['stream', 'talk', 'smash', 'water', 'monster', 'at', 'sit', 'ending', 'epilogue', 'credits', 'world', 'settings', 'noopen'];
-if (day === 1 && !DEBUG_SCENE_PARAMS.some((k) => params.has(k))) setTimeout(playOpening, 900);
+const debugScene = DEBUG_SCENE_PARAMS.some((k) => params.has(k));
+if (debugScene || params.has('day')) {
+  if (day === 1 && !debugScene) setTimeout(playOpening, 900);
+} else showTitle();
+
+// ---------- 시작 화면 / 이어하기 ----------
+// 진행은 날이 바뀔 때마다 저장된다 (그날의 시작 지점 = 날짜 + 그때까지의 상태 플래그). 이어하기는 마지막 날의 시작 지점에서 다시 시작한다
+const SAVE_KEY = 'nomiyo.save';
+function saveProgress() {
+  try {
+    localStorage.setItem(SAVE_KEY, JSON.stringify({ day, flags: { ...flags } }));
+  } catch {}
+}
+function loadProgress() {
+  try {
+    const sv = JSON.parse(localStorage.getItem(SAVE_KEY));
+    if (sv && sv.day >= 1 && sv.day <= LAST_DAY) return sv;
+  } catch {}
+  return null;
+}
+function showTitle() {
+  const saved = loadProgress();
+  cutscene = true; // 메뉴를 고르기 전까지 이동/상호작용 잠금
+  title.show({
+    canContinue: !!saved,
+    onMove: () => audio.sfx.talk(),
+    onPick: (id) => {
+      audio.unlock();
+      audio.sfx.ui();
+      cutscene = false;
+      if (id === 'continue' && saved) continueGame(saved);
+      else newGame();
+    },
+  });
+}
+function newGame() {
+  for (const k in flags) flags[k] = false;
+  setDay(1);
+  saveProgress();
+  setTimeout(playOpening, 700);
+}
+/** 저장된 날의 시작 지점: 침대 옆에서 그날 아침처럼 일어난다 */
+function continueGame(saved) {
+  for (const k in flags) flags[k] = !!saved.flags?.[k];
+  dayCardEl.textContent = `DAY ${saved.day}`;
+  fadeThen(
+    () => {
+      dayCardEl.classList.add('on');
+      setDay(saved.day);
+      loadWorld('house');
+      fox.group.position.copy(world.bed.approach);
+      controls.target.copy(fox.group.position).y += 1.4;
+      camera.position.copy(controls.target).add(new THREE.Vector3(-6, 3.6, 5));
+      horrorBlend = dreadFor(day);
+      daylight = daylightFor(day);
+      setTimeout(() => dayCardEl.classList.remove('on'), 1500);
+      const wake = WAKE_LINES[day];
+      if (wake) setTimeout(() => sayLines(fox, wake), 2000);
+    },
+    { hold: 1900 }
+  );
+}
 // ?cam=x,y,z : 카메라를 그 위치에 두고 여우를 바라봄 (스크린샷 디버그용)
 if (params.has('cam')) {
   const [x, y, z] = params.get('cam').split(',').map(Number);
@@ -1380,11 +1691,11 @@ if (params.has('cam')) {
 }
 
 // ---------- 충돌/경계 ----------
-function confine(p, radius) {
+function confine(p, radius, obstacles = world.obstacles) {
   const b = world.bounds;
   p.x = THREE.MathUtils.clamp(p.x, b.minX + radius, b.maxX - radius);
   p.z = THREE.MathUtils.clamp(p.z, b.minZ + radius, b.maxZ - radius);
-  for (const o of world.obstacles) {
+  for (const o of obstacles) {
     const minX = o.minX - radius;
     const maxX = o.maxX + radius;
     const minZ = o.minZ - radius;
@@ -1461,8 +1772,14 @@ function updateFox(dt) {
   if (door && !transitioning && !choiceOpen && !ending && !cutscene) {
     const d = Math.hypot(p.x - door.position.x, p.z - door.position.z);
     if (!doorArmed && d > door.radius + 0.6) doorArmed = true;
-    if (doorArmed && d < door.radius) switchWorld(door.target);
+    if (doorArmed && d < door.radius) {
+      endChase(); // 오두막 안으로 들어가면 추격이 끝난다
+      switchWorld(door.target);
+    }
   }
+  // 3일차 쪽지를 본 뒤 북쪽 석탑 두 개 사이로 걸어 들어가면 헛간이 드러난다
+  const tw = world.props?.towers;
+  if (tw && flags.noteFound && !flags.barnRevealed && !cutscene && Math.abs(p.x - tw.position.x) < tw.halfW && Math.abs(p.z - tw.position.z) < tw.halfD) revealBarn();
 }
 
 // ---------- 파닥이 AI (배회 / 동행 따라가기) ----------
@@ -1615,13 +1932,13 @@ renderer.setAnimationLoop(() => {
     updateFox(dt);
     for (const c of chicks) updateChick(c, dt);
     updateMonsters(dt);
+    updateChase(dt);
     updateLights(dt);
     updateCamera(dt);
     if (streaming) streamSim.update(dt);
     if (castle.isActive()) {
       castle.update(dt);
       streamTime += dt;
-      if (day === 4 && !knockHeard && streamTime > 18) knockEvent();
       // 배드엔딩 인게임 장면: 괴물이 두 칸 안으로 붙는 순간(또는 안전 타임아웃) 현실의 노크가 시작된다
       if (endingStream === 'bad' && !badKnockStarted && (castle.monsterDistance() <= 2 || performance.now() > badFallback)) badKnockSequence();
     }
@@ -1629,11 +1946,16 @@ renderer.setAnimationLoop(() => {
   scare.applyShake(camera, dt);
   // 으스스할수록 전체 노출도 낮춰 화면이 가라앉게
   renderer.toneMappingExposure = THREE.MathUtils.lerp(1.1, 0.72, horrorBlend);
-  audio.update(dt, { dread: horrorBlend, world: world.group.name, ingame: castle.isActive(), silent: !!ending });
+  audio.update(dt, { dread: horrorBlend, world: world.group.name, ingame: castle.isActive(), silent: !!ending || gameOver });
   const action = currentAction();
   if (action) prompt.show(action.at, action.label, camera);
   else prompt.hide();
   world.update(dt, t, horrorBlend, streaming, daylight);
+  // 나침반: 숲을 걸어 다닐 때만. 카메라가 보는 방향을 위로 놓고 동서남북을 돌린다
+  const showCompass = world.group.name === 'forest' && !streaming && !ending && !gameOver && !title.isOpen();
+  compass.setVisible(showCompass);
+  if (showCompass) compass.update(camera.getWorldDirection(tmpForward).setY(0).normalize());
+  if (world.occlude) world.occlude(camera.position, fox.group.position, dt); // 시야를 가리는 나무 반투명화
   if (castle.isActive()) castle.render(); // 게임 화면이 방을 덮고 있는 동안은 3D 렌더 생략
   else renderer.render(scene, camera);
 });

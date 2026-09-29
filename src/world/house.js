@@ -435,7 +435,7 @@ export function createHouse() {
   group.add(rug);
 
   // ---------- 문 (왼쪽 벽) ----------
-  const DOOR = { z: 3.5, w: 2.4, h: 5.0 };
+  const DOOR = { z: 3.5, w: 3.2, h: 5.0 }; // 문 가로폭을 넓게
   const door = new THREE.Group();
   door.position.set(-W / 2 + 0.02, 0, DOOR.z);
   group.add(door);
@@ -454,7 +454,7 @@ export function createHouse() {
   const knob = sphere(0.1, toon(0xf2c94c));
   knob.position.set(0.22, DOOR.h * 0.45, DOOR.w / 2 - 0.35);
   door.add(jambL, jambR, lintel, panel, inset, knob);
-  const doorMat = mesh(new THREE.BoxGeometry(1.6, 0.03, 2.6), toon(0xd9b48a));
+  const doorMat = mesh(new THREE.BoxGeometry(1.6, 0.03, 3.4), toon(0xd9b48a));
   doorMat.position.set(-W / 2 + 1.0, 0.015, DOOR.z);
   group.add(doorMat);
 
