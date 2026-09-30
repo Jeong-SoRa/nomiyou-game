@@ -48,6 +48,28 @@ controls.enablePan = false;
 controls.minDistance = 4;
 controls.maxDistance = 16;
 controls.maxPolarAngle = Math.PI / 2 - 0.06;
+// 달리기(Shift+이동) 중에도 드래그로 화면을 돌릴 수 있게: OrbitControls 는 Shift/Ctrl+왼쪽 드래그를 팬으로
+// 취급하는데 팬이 꺼져 있어 아무 동작도 안 한다. 캡처 단계에서 가로채 modifier 를 뗀 이벤트로 바꿔 전달한다.
+window.addEventListener(
+  'pointerdown',
+  (e) => {
+    if (e.target !== renderer.domElement || e.button !== 0) return;
+    if (!e.shiftKey && !e.ctrlKey && !e.metaKey) return;
+    e.stopPropagation();
+    renderer.domElement.dispatchEvent(
+      new PointerEvent('pointerdown', {
+        pointerId: e.pointerId,
+        pointerType: e.pointerType,
+        isPrimary: e.isPrimary,
+        button: 0,
+        buttons: e.buttons,
+        clientX: e.clientX,
+        clientY: e.clientY,
+      })
+    );
+  },
+  true
+);
 
 const modeEl = document.getElementById('mode');
 const dayEl = document.getElementById('day');
