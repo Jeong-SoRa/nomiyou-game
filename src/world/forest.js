@@ -110,7 +110,6 @@ export function createForest() {
     [0x221a16, 0x4f3a2a],
     [0x2e2620, 0x8a6a4c],
   ];
-  const mDead = shade(toon(0x1a1612), 0x1a1612, 0x3b332c);
   const treeObstacles = [];
   const SPACING = 3.7;
   const blocked = (x, z) =>
@@ -184,6 +183,8 @@ export function createForest() {
     cell.get(k).push([x, z]);
   }
   const trees = [];
+  // 시야 가림 목록: 카메라와 노미요 사이에 끼면 반투명해지는 것들 (나무 + 건물). occlude() 가 매 프레임 검사
+  const occluders = []; // { obj, points: [{x,z,r}], mats, fade }
   const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
   for (const [x, z] of treeSpots) {
     const tree = new THREE.Group();
@@ -248,8 +249,10 @@ export function createForest() {
         tree.add(b);
       }
     } else {
-      // 고사목: 잎 없이 가지만 뻗은 검은 나무
+      // 고사목: 잎 없이 가지만 뻗은 검은 나무. 재질은 이 나무 전용 (가림 반투명이 다른 고사목까지 번지지 않게)
+      const mDead = shade(toon(0x1a1612), 0x1a1612, 0x3b332c);
       mats[0] = mats[1] = mDead;
+      tree.userData.dead = true;
       addTrunk(0.16, 0.3, rand(4, 6), mDead);
       for (let i = 0; i < 3; i++) {
         const br = mesh(new THREE.CylinderGeometry(0.05, 0.1, rand(1.4, 2.4), 6), mDead);
@@ -263,12 +266,12 @@ export function createForest() {
     tree.position.set(x, 0, z);
     tree.rotation.y = rand(0, Math.PI * 2);
     tree.userData.mats = mats;
-    tree.userData.fade = 1;
     tree.userData.r = Math.max(0.6, canopyR) * scale;
     tree.userData.canopyR = canopyR;
     tree.userData.canopyY = canopyY;
     group.add(tree);
     trees.push(tree);
+    occluders.push({ obj: tree, points: [{ x, z, r: tree.userData.r }], mats, fade: 1 });
     const hs = 0.42 * scale;
     treeObstacles.push({ minX: x - hs, maxX: x + hs, minZ: z - hs, maxZ: z + hs });
   }
@@ -301,7 +304,7 @@ export function createForest() {
   {
     const mBerry = toon(0x5b2d7a);
     const mVine = toon(0x3f7a3a);
-    const candidates = trees.filter((t) => t.userData.mats[0] !== mDead && Math.hypot(t.position.x, t.position.z) > 11 && Math.abs(t.position.x) < R - 3 && Math.abs(t.position.z) < R - 3);
+    const candidates = trees.filter((t) => !t.userData.dead && Math.hypot(t.position.x, t.position.z) > 11 && Math.abs(t.position.x) < R - 3 && Math.abs(t.position.z) < R - 3);
     for (let i = candidates.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
@@ -324,6 +327,14 @@ export function createForest() {
       leaf.position.set(0, 0.2, 0);
       bunch.add(leaf);
       tree.add(bunch);
+      // 나무가 반투명해질 때 매달린 송이만 남지 않도록, 재질을 송이마다 복제해 그 나무의 mats 에 합류
+      const cloned = new Map();
+      bunch.traverse((o) => {
+        if (!o.isMesh) return;
+        if (!cloned.has(o.material)) cloned.set(o.material, o.material.clone());
+        o.material = cloned.get(o.material);
+        tree.userData.mats.push(o.material);
+      });
       // 상호작용 위치는 나무 기둥이 아니라 송이가 매달린 자리 (잎 바깥)
       tree.updateMatrixWorld(true);
       const wp = bunch.getWorldPosition(new THREE.Vector3());
@@ -803,29 +814,54 @@ export function createForest() {
     }
   }
 
-  /** 카메라(cam)와 노미요(fox) 사이에 끼어 시야를 가리는 나무를 반투명하게. 매 프레임 main.js 가 부른다 */
+  /** 카메라(cam)와 노미요(fox) 사이에 끼어 시야를 가리는 나무·건물을 반투명하게. 매 프레임 main.js 가 부른다 */
   const tmpA = new THREE.Vector2();
   const tmpB = new THREE.Vector2();
+  const tmpSeg = new THREE.Vector2();
   const tmpP = new THREE.Vector2();
+  // 건물을 가림 목록에 등록. 외곽선 재질은 전역 공유라 이 건물 전용으로 복제해 함께 흐려지게 한다.
+  // points: 바닥 평면에서 건물을 덮는 원 여러 개 (긴 건물은 원 두 개로 근사)
+  function addOccluder(obj, points) {
+    const mats = new Set();
+    obj.traverse((o) => {
+      if (!o.isMesh) return;
+      if (o.material.side === THREE.BackSide) o.material = o.material.clone();
+      mats.add(o.material);
+    });
+    occluders.push({ obj, points, mats: [...mats], fade: 1 });
+  }
+  addOccluder(cabin, [{ x: CABIN.x - 2.2, z: CABIN.z, r: 3.7 }, { x: CABIN.x + 2.2, z: CABIN.z, r: 3.7 }]);
+  addOccluder(props.well.group, [{ x: WELL.x, z: WELL.z, r: 2.1 }]);
+  addOccluder(props.towers.group, [{ x: -TOWERS.x, z: TOWERS.z, r: 1.4 }, { x: TOWERS.x, z: TOWERS.z, r: 1.4 }]);
+  addOccluder(props.barn.group, [{ x: BARN.x, z: BARN.z, r: 3.5 }]);
+  addOccluder(props.statue.group, [{ x: CRATE.x, z: CRATE.z, r: 2.8 }]);
+  addOccluder(props.crate.group, [{ x: CRATE.x, z: CRATE.z, r: 3.6 }]);
   function occlude(cam, fox, dt) {
     tmpA.set(cam.x, cam.z);
     tmpB.set(fox.x, fox.z);
-    const seg = tmpB.clone().sub(tmpA);
-    const len2 = Math.max(seg.lengthSq(), 0.001);
-    for (const tree of trees) {
-      tmpP.set(tree.position.x, tree.position.z).sub(tmpA);
-      const k = THREE.MathUtils.clamp(tmpP.dot(seg) / len2, 0, 1);
-      const dist = tmpP.sub(seg.clone().multiplyScalar(k)).length();
-      const between = dist < tree.userData.r + (k < 0.35 ? 2.6 : 0.8); // 카메라 가까이의 나무는 화면을 크게 가리므로 더 넓게 판정 (k 는 0~1)
+    tmpSeg.copy(tmpB).sub(tmpA);
+    const len2 = Math.max(tmpSeg.lengthSq(), 0.001);
+    for (const oc of occluders) {
+      let between = false;
+      if (oc.obj.visible) {
+        for (const p of oc.points) {
+          tmpP.set(p.x, p.z).sub(tmpA);
+          const k = THREE.MathUtils.clamp(tmpP.dot(tmpSeg) / len2, 0, 1);
+          const dist = tmpP.addScaledVector(tmpSeg, -k).length();
+          if (dist < p.r + (k < 0.35 ? 2.6 : 0.8)) { // 카메라 가까이는 화면을 크게 가리므로 더 넓게 판정 (k 는 0~1)
+            between = true;
+            break;
+          }
+        }
+      }
       const target = between ? 0.18 : 1;
-      const u = tree.userData;
-      if (Math.abs(u.fade - target) < 0.01 && u.fade === target) continue;
-      u.fade = THREE.MathUtils.damp(u.fade, target, 22, dt);
-      if (Math.abs(u.fade - target) < 0.01) u.fade = target;
-      for (const m of u.mats) {
-        m.transparent = u.fade < 1;
-        m.opacity = u.fade;
-        m.depthWrite = u.fade >= 1;
+      if (oc.fade === target) continue;
+      oc.fade = THREE.MathUtils.damp(oc.fade, target, 22, dt);
+      if (Math.abs(oc.fade - target) < 0.01) oc.fade = target;
+      for (const m of oc.mats) {
+        m.transparent = oc.fade < 1;
+        m.opacity = oc.fade;
+        m.depthWrite = oc.fade >= 1;
       }
     }
   }

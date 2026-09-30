@@ -1955,7 +1955,7 @@ renderer.setAnimationLoop(() => {
   const showCompass = world.group.name === 'forest' && !streaming && !ending && !gameOver && !title.isOpen();
   compass.setVisible(showCompass);
   if (showCompass) compass.update(camera.getWorldDirection(tmpForward).setY(0).normalize());
-  if (world.occlude) world.occlude(camera.position, fox.group.position, dt); // 시야를 가리는 나무 반투명화
+  if (world.occlude) world.occlude(camera.position, fox.group.position, dt); // 시야를 가리는 나무·건물 반투명화
   if (castle.isActive()) castle.render(); // 게임 화면이 방을 덮고 있는 동안은 3D 렌더 생략
   else renderer.render(scene, camera);
 });
