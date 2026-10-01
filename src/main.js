@@ -1049,10 +1049,11 @@ function rollCredits(kind) {
     `<div class="blk"><div class="ttl">노미요의 숲</div>${kind === 'same' ? '<div class="endName">엔딩 3 · 내일도 오늘도 같은 하루</div>' : ''}</div>` +
     blk('출연', '노미요<br>파닥이들<br>' + (kind === 'true' ? '' : '숲의 괴물<br>') + '고성의 괴물') +
     blk('기획 및 제작', 'weyong') +
-    blk('그래픽 · 음악 · 효과음', '전부 코드로 그리고 합성함') +
+    blk('그래픽 · 효과음', '전부 코드로 그리고 합성함') +
+    blk('음악', '"Morning" · "That Zen Moment" · "Galactic Rap"<br>Kevin MacLeod (incompetech.com)<small>Licensed under Creative Commons: By Attribution 4.0 License<br>creativecommons.org/licenses/by/4.0/</small>') +
     blk('만든 도구', 'Three.js · Vite') +
     `<div class="blk last">${kind === 'true' ? '시청해 주셔서 감사합니다.<br>미요미요~' : kind === 'same' ? '내일도 오늘도 같은 하루' : '보내줘'}</div>` +
-    `<div class="blk copyright">© 2026 weyong. All rights reserved.</div>` +
+    `<div class="blk copyright">© 2026 weyong. 노미요의 숲. All rights reserved.<br>위 세 곡을 제외한 게임 본체의 그래픽·코드·효과음·구성은 모두 weyong 이 직접 제작했습니다.</div>` +
     `<div class="blk endHint">R · 처음부터</div>`;
   // 아래에서 위로 올라오다가 마지막 문구(.last)가 화면 가운데에서 멈춘다
   requestAnimationFrame(() => {
@@ -1646,7 +1647,26 @@ const DEBUG_SCENE_PARAMS = ['stream', 'talk', 'smash', 'water', 'monster', 'at',
 const debugScene = DEBUG_SCENE_PARAMS.some((k) => params.has(k));
 if (debugScene || params.has('day')) {
   if (day === 1 && !debugScene) setTimeout(playOpening, 900);
-} else showTitle();
+} else if (params.has('nofade')) showTitle();
+else showDisclaimer(showTitle);
+
+/** 타이틀 전 고지 화면: 검은 배경에 문구가 떠올랐다가 사라진 뒤 done() (시작 화면으로) */
+function showDisclaimer(done) {
+  cutscene = true; // 고지 중 이동/상호작용 잠금 (이어서 타이틀이 다시 잠근다)
+  const el = document.createElement('div');
+  el.id = 'disclaimer';
+  el.innerHTML = `<div class="txt">본 게임의 스토리는 허구의 창작물입니다.<br>게임 내 모든 설정과 전개는 제작자의 실제 의견이나 입장을 반영하지 않음을 알려드립니다.</div>`;
+  document.body.appendChild(el);
+  requestAnimationFrame(() => el.classList.add('on'));
+  setTimeout(() => {
+    el.classList.remove('on'); // 문구 페이드아웃
+    setTimeout(() => {
+      el.classList.add('out'); // 검은 화면 페이드아웃
+      setTimeout(() => el.remove(), 1300);
+      done();
+    }, 1100);
+  }, 4600);
+}
 
 // ---------- 시작 화면 / 이어하기 ----------
 // 진행은 날이 바뀔 때마다 저장된다 (그날의 시작 지점 = 날짜 + 그때까지의 상태 플래그). 이어하기는 마지막 날의 시작 지점에서 다시 시작한다
